@@ -284,15 +284,19 @@ straight into a `Presentation`: `Panel`, `Table`, `Syntax`, `Markdown`, and the
 built-in indicators `rich.spinner.Spinner` and `rich.progress_bar.ProgressBar` —
 no custom drawing.
 
-FlowView caches an entry's render and redraws only on `update()` / metadata
-change, so animation is app-driven — tick a timer and advance the frame:
+FlowView caches an entry's render, so animation needs a clock:
 
-- **Gutter indicator** (spinner via `set_metadata`) — redraws only the gutter,
-  never the body, never reflows. Cheapest.
-- **Body indicator** (progress bar via `update()`) — re-presents the body; no
-  reflow at fixed height.
+- **Gutter spinner** — set `FlowView(animation_fps=12)` and use a time-based
+  decorator (`rich.spinner.Spinner().render(time)`). **FlowView owns the clock**
+  and re-derives the gutter itself — no app timer, no `set_metadata`, and the
+  body is never re-presented. This is the cheap, recommended home for spinners.
+- **Body indicator** (progress bar, "thinking…") — the body's *content* changes
+  over time, which is your data, so the app advances it and calls
+  `entry.update()`. No reflow at fixed height. (A body value like progress can't
+  be driven by FlowView — it doesn't know the value.)
 
-See `examples/progress.py` (Rich `Spinner` + `ProgressBar`).
+See `examples/progress.py` — the gutter spinner is FlowView-driven; the app
+timer only advances the progress *value*.
 
 > Interactive Textual **widgets** (`Button`, `Select`, `Input`) are a different
 > thing — FlowView paints renderables rather than mounting child widgets, so

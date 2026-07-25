@@ -115,6 +115,7 @@ class FlowView(ScrollView, Generic[T]):
         overscan: int = 4,
         read_ahead: int | None = None,
         spacing: int = 1,
+        animation_fps: float = 0,
         placeholder: RenderableType = "Loading...",
         name: str | None = None,
         id: str | None = None,
@@ -129,6 +130,10 @@ class FlowView(ScrollView, Generic[T]):
         # Rows to pre-present *ahead of the scroll direction*, beyond the static
         # overscan band. None -> one viewport height. 0 disables read-ahead.
         self._read_ahead = read_ahead
+        # >0: FlowView drives gutter animation itself at this frame rate, so a
+        # time-based decorator (e.g. rich.spinner.Spinner) animates with no app
+        # timer and no set_metadata. 0 disables it.
+        self._animation_fps = max(0.0, animation_fps)
         # Direction of the last scroll: -1 up, +1 down, 0 none.
         self._scroll_dir = 0
         # Per-frame memo of the sticky-header computation, keyed by scroll_y.
@@ -166,6 +171,16 @@ class FlowView(ScrollView, Generic[T]):
         self._viewport.set_entries(self._visible_entries())
         self._refresh_layout(None)
         self._present_visible()
+        if self._animation_fps > 0:
+            # FlowView owns the animation clock (not the app): re-derive gutters
+            # at this frame rate so a time-based decorator animates on its own.
+            self.set_interval(1 / self._animation_fps, self._tick_animation)
+
+    def _tick_animation(self) -> None:
+        # Drop cached gutter strips so the decorator re-runs (with the current
+        # time) on the next repaint. Bodies are left cached — no re-present.
+        self._gutter_cache.clear()
+        self.refresh()
 
     def on_unmount(self) -> None:
         self._model._detach()

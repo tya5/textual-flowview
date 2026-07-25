@@ -92,6 +92,7 @@ class ProgressApp(App):
             presenter=TaskPresenter(),
             decorator=SpinnerGutter(),
             gutter_width=2,
+            animation_fps=12,   # FlowView drives the gutter spinner itself
         )
         yield Footer()
 
@@ -106,12 +107,12 @@ class ProgressApp(App):
             entry.set_state(EntryState.RUNNING)
 
     def _tick(self) -> None:
+        # The gutter spinner is driven by FlowView (animation_fps). This timer
+        # only advances the body progress *value* — that's real data, so it
+        # belongs to the app: bump it and re-present the body.
         for entry in self.tasks:
             if entry.state is not EntryState.RUNNING:
                 continue
-            # Advance the gutter spinner: bump metadata to redraw the gutter.
-            entry.set_metadata("tick", entry.metadata.get("tick", 0) + 1)
-            # Advance the body progress bar: re-present the body.
             entry.item.progress = min(1.0, entry.item.progress + entry.item.speed)
             entry.update()
             if entry.item.progress >= 1.0:
