@@ -146,6 +146,22 @@ FlowView(model=..., presenter=..., anchor=Anchor.STICKY_BOTTOM)    # chat / log
 bottom** — scrolling up to read history stops the auto-follow (Slack / Discord
 / Claude Code behaviour).
 
+## Smooth scrolling (overscan & read-ahead)
+
+FlowView only presents what's on (or near) screen. Two knobs control how much
+it prepares ahead of time so scrolling reveals real content, not placeholders:
+
+```python
+FlowView(model=..., presenter=..., overscan=4, read_ahead=None)
+```
+
+- **`overscan`** — extra rows presented above *and* below the viewport (a
+  static cushion around the visible range).
+- **`read_ahead`** — extra rows pre-presented *in the direction you're
+  scrolling*, on top of overscan. `None` (default) uses one viewport height;
+  `0` disables it. Larger = smoother fast scrolling at the cost of presenting
+  more up front.
+
 ## Selection
 
 Single-entry click selection (v0.3). The selection lives on the view, not the

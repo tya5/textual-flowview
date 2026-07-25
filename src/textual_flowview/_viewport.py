@@ -89,6 +89,14 @@ class Viewport(Generic[T]):
     def estimated_height(self) -> int:
         return self._estimated_height
 
+    @property
+    def overscan(self) -> int:
+        return self._overscan
+
+    @property
+    def height(self) -> int:
+        return self._height
+
     def set_size(self, width: int, height: int) -> None:
         """Set the viewport's inner size in cells. A width change invalidates
         all offsets (heights are width-dependent)."""
@@ -153,6 +161,21 @@ class Viewport(Generic[T]):
         if index < 0 or index >= n:
             return None
         return index, y - prefix[index]
+
+    def entries_between(self, top: int, bottom: int) -> list[Entry[T]]:
+        """Entries whose rows intersect the virtual band ``[top, bottom)``.
+
+        Used for read-ahead: the view asks for a band wider than the visible
+        range so it can pre-present entries before they scroll in."""
+        prefix = self._prefix()
+        n = len(self._entries)
+        if n == 0 or bottom <= top:
+            return []
+        start = max(0, _upper_bound(prefix, max(0, top)) - 1)
+        stop = start
+        while stop < n and prefix[stop] < bottom:
+            stop += 1
+        return self._entries[start:stop]
 
     def offset_of(self, entry: Entry[T]) -> int | None:
         """Virtual y-offset of ``entry``'s top edge, or ``None`` if unknown."""

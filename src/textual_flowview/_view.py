@@ -81,6 +81,7 @@ class FlowView(ScrollView, Generic[T]):
         anchor: Anchor = Anchor.CURRENT,
         estimated_height: int = 1,
         overscan: int = 4,
+        read_ahead: int | None = None,
         placeholder: RenderableType = "Loading...",
         name: str | None = None,
         id: str | None = None,
@@ -90,6 +91,11 @@ class FlowView(ScrollView, Generic[T]):
         self._model = model
         self._presenter = presenter
         self._decorator = decorator
+        # Rows to pre-present *ahead of the scroll direction*, beyond the static
+        # overscan band. None -> one viewport height. 0 disables read-ahead.
+        self._read_ahead = read_ahead
+        # Direction of the last scroll: -1 up, +1 down, 0 none.
+        self._scroll_dir = 0
         # No decorator -> no gutter. Decorator but unset width -> a sensible 2.
         if gutter_width is None:
             gutter_width = 2 if decorator is not None else 0
@@ -136,6 +142,10 @@ class FlowView(ScrollView, Generic[T]):
 
     def watch_scroll_y(self, old_value: float, new_value: float) -> None:
         super().watch_scroll_y(old_value, new_value)
+        if new_value > old_value:
+            self._scroll_dir = 1
+        elif new_value < old_value:
+            self._scroll_dir = -1
         if self._viewport.anchor is Anchor.STICKY_BOTTOM:
             # Follow only while parked at the bottom; scrolling up releases it.
             self._follow_bottom = int(new_value) >= self.max_scroll_y
@@ -436,12 +446,22 @@ class FlowView(ScrollView, Generic[T]):
         self.refresh()
 
     def _present_visible(self) -> None:
-        """Kick off presentation for every entry in (and just around) the
-        visible range, so scrolling reveals real content rather than
-        placeholders."""
+        """Kick off presentation for the visible range plus the overscan band,
+        plus a read-ahead band biased in the current scroll direction — so
+        fast scrolling reveals real content instead of placeholders.
+
+        Already-cached or in-flight entries are skipped by ``_present_entry``,
+        so the read-ahead band is cheap once warm."""
         if self._content_width() <= 0:
             return
         self._sync_geometry()
         self._sync_scroll()
-        for entry in self._viewport.visible_range().entries:
+        height = self._viewport.height
+        overscan = self._viewport.overscan
+        ahead = self._read_ahead if self._read_ahead is not None else height
+        up = overscan + (ahead if self._scroll_dir < 0 else 0)
+        down = overscan + (ahead if self._scroll_dir > 0 else 0)
+        top = self._viewport.scroll_y - up
+        bottom = self._viewport.scroll_y + height + down
+        for entry in self._viewport.entries_between(top, bottom):
             self._present_entry(entry)
