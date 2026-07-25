@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Protocol, TypeVar, runtime_checkable
+from typing import ClassVar, Protocol, TypeVar, runtime_checkable
 
 from rich.console import RenderableType
 from rich.text import Text
@@ -42,7 +42,7 @@ class StateDecorator:
         StateDecorator(symbols={EntryState.RUNNING: "⟳"})
     """
 
-    DEFAULT_SYMBOLS: dict[EntryState, str] = {
+    DEFAULT_SYMBOLS: ClassVar[dict[EntryState, str]] = {
         EntryState.DEFAULT: " ",
         EntryState.RUNNING: "✻",
         EntryState.SUCCESS: "✓",
@@ -50,7 +50,7 @@ class StateDecorator:
         EntryState.CANCELLED: "✖",
     }
 
-    DEFAULT_STYLES: dict[EntryState, str] = {
+    DEFAULT_STYLES: ClassVar[dict[EntryState, str]] = {
         EntryState.DEFAULT: "dim",
         EntryState.RUNNING: "yellow",
         EntryState.SUCCESS: "green",
