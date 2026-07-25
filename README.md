@@ -150,6 +150,24 @@ FlowView(
 Style the pinned rows via the `flowview--sticky-header` component class. See
 `examples/groups.py`.
 
+## Keys & focus
+
+FlowView is **unopinionated about keys** — it defines no `BINDINGS` of its own,
+so it never conflicts with your app's shortcuts. The only keys it responds to
+are the standard scroll keys (arrows, Home/End, PageUp/PageDown) inherited from
+Textual's `ScrollableContainer`, and only while the widget is focused — Textual
+resolves keys through the focus chain, so FlowView never globally captures them.
+<kbd>Ctrl</kbd>+<kbd>C</kbd> copy is Textual's own Screen binding, not ours.
+
+Customize with any standard Textual mechanism:
+
+- override keys in your `App` / `Screen` / a `FlowView` subclass via `BINDINGS`;
+- set `flow.can_focus = False` so it never grabs scroll keys (wheel still works);
+- bind your own keys to the public methods (`scroll_to_bottom`, `find_next`,
+  `copy_entry`, …).
+
+The library never binds a key to an action for you — that's your app's call.
+
 ## Scroll anchoring
 
 ```python
