@@ -150,6 +150,31 @@ FlowView(
 Style the pinned rows via the `flowview--sticky-header` component class. See
 `examples/groups.py`.
 
+## Minimap (scrollbar replacement)
+
+`FlowMinimap` is a thin overview strip that **replaces the scrollbar**: it
+compresses the whole flow into one column, painting each row in the colour of
+its most notable state (red = error) and highlighting the on-screen range as
+the "window" (a content-aware scroll thumb). Click or drag it to jump.
+
+```python
+from textual.containers import Horizontal
+from textual_flowview import FlowView, FlowMinimap
+
+def compose(self):
+    self.view = FlowView(model=m, presenter=p)
+    with Horizontal():
+        yield self.view
+        yield FlowMinimap(flow_view=self.view)
+
+# hide the native scrollbar so the minimap stands in for it:
+# CSS:  FlowView { scrollbar-size-vertical: 0; }
+```
+
+State→colour is overridable (`FlowMinimap(..., colors={EntryState.ERROR: "magenta"})`)
+and the window band is themed via the `flowminimap--window` component class.
+See `examples/minimap.py` (a 400-line scan log — errors are visible at a glance).
+
 ## Keys & focus
 
 FlowView is **unopinionated about keys** — it defines no `BINDINGS` of its own,
@@ -311,6 +336,7 @@ PYTHONPATH=src python examples/showcase.py       # live AI-agent activity feed
 PYTHONPATH=src python examples/groups.py          # collapsible groups + sticky headers
 PYTHONPATH=src python examples/intervention.py    # clickable in-flow selector
 PYTHONPATH=src python examples/progress.py        # Rich Spinner + ProgressBar in entries
+PYTHONPATH=src python examples/minimap.py         # minimap replacing the scrollbar
 PYTHONPATH=src python examples/chat.py            # streaming chat
 ```
 

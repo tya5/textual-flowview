@@ -241,6 +241,19 @@ class FlowView(ScrollView, Generic[T]):
 
     # -- public API --------------------------------------------------------
 
+    @property
+    def entries(self) -> list[Entry[T]]:
+        """The entries currently laid out (model order, hidden ones excluded) —
+        the same list the view draws. Useful for an overview like a minimap."""
+        return self._viewport.entries
+
+    def visible_range(self) -> tuple[int, int]:
+        """``(start, stop)`` indices into :attr:`entries` for the rows currently
+        on screen (``stop`` exclusive)."""
+        self._sync_scroll()
+        vr = self._viewport.visible_range()
+        return vr.start, vr.stop
+
     def scroll_to_top(self) -> None:
         self.scroll_to(y=0, animate=False)
 

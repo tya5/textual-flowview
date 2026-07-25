@@ -18,6 +18,7 @@ from __future__ import annotations
 from ._anchor import Anchor
 from ._decorator import FlowDecorator, StateDecorator
 from ._entry import Entry
+from ._minimap import FlowMinimap
 from ._model import FlowModel
 from ._presentation import Presentation
 from ._presenter import FlowPresenter
@@ -29,6 +30,7 @@ __all__ = [
     "Entry",
     "EntryState",
     "FlowDecorator",
+    "FlowMinimap",
     "FlowModel",
     "FlowPresenter",
     "FlowView",
