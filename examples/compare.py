@@ -9,12 +9,19 @@ FlowView paints instead.
 Great for an asciinema recording: launch, then tap `c` / `f` to flip back and
 forth and watch the FPS / frame-ms / widget-count change live.
 
-Run:  PYTHONPATH=src python examples/compare.py
+For a true side-by-side (each in its own process = its own render loop), pass a
+backend and run two panes — e.g. split the terminal:
+
+    PYTHONPATH=src python examples/compare.py flowview    # left pane
+    PYTHONPATH=src python examples/compare.py container   # right pane
+
+Run:  PYTHONPATH=src python examples/compare.py [flowview|container]
 Keys: c container · f flowview · space pause/resume scroll · q quit
 """
 
 from __future__ import annotations
 
+import sys
 import time
 from dataclasses import dataclass
 
@@ -71,12 +78,12 @@ class CompareApp(App):
         ("q", "quit", "Quit"),
     ]
 
-    def __init__(self) -> None:
+    def __init__(self, mode: str = "flowview") -> None:
         super().__init__()
         self.model: FlowModel[Row] = FlowModel()
         for i in range(N):
             self.model.append(Row(i))
-        self._mode = "flowview"
+        self._mode = mode
         self._fps = 60.0
         self._last = 0.0
         self._scrolling = True
@@ -86,7 +93,10 @@ class CompareApp(App):
         yield Container(id="host")
 
     async def on_mount(self) -> None:
-        await self._mount_flowview()
+        if self._mode == "container":
+            await self._mount_container()
+        else:
+            await self._mount_flowview()
         self._last = time.monotonic()
         self.set_interval(1 / 60, self._frame)   # workload + FPS meter
 
@@ -163,4 +173,5 @@ class CompareApp(App):
 
 
 if __name__ == "__main__":
-    CompareApp().run()
+    arg = sys.argv[1].lower() if len(sys.argv) > 1 else "flowview"
+    CompareApp("container" if arg.startswith("c") else "flowview").run()
