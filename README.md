@@ -21,6 +21,26 @@ deals with a **Model + Presenter**.
 </tr>
 </table>
 
+## Why virtualize? (measured)
+
+The same list built two ways — a Textual `VerticalScroll` with one `Static`
+widget per row vs a `FlowView` — at N rows (`examples/benchmark.py`, mid-range
+laptop):
+
+| rows | build (container → flowview) | widgets (container → flowview) | full re-layout / resize |
+| ---: | :-- | :-- | :-- |
+|  100 | 120 → **84 ms** | 101 → **1** | 138 → 138 ms |
+|  400 | 278 → **86 ms** | 401 → **1** | 299 → **135 ms** |
+| 1000 | 583 → **96 ms** | 1001 → **1** | 553 → **150 ms** |
+| 2000 | 1155 → **117 ms** | 2001 → **1** | 1123 → **171 ms**  _(6.6× faster)_ |
+
+The container mounts one widget per row — O(N) DOM, layout, and memory that grows
+with the list. FlowView **paints** the visible rows, so it is O(viewport): **one
+widget regardless of N**, a flat build and re-layout, and scrolling that stays
+smooth. `examples/compare.py` shows it live with an FPS meter — flip `c` / `f` to
+watch it go from **~25 FPS / 1500 widgets** (container) to **~60 FPS / 3 widgets**
+(FlowView) on the same 1500-row list.
+
 ## Core ideas
 
 - **`FlowModel[T]`** owns an ordered collection of items and knows nothing
@@ -457,6 +477,8 @@ PYTHONPATH=src python examples/intervention.py    # clickable in-flow selector
 PYTHONPATH=src python examples/progress.py        # Rich Spinner + ProgressBar in entries
 PYTHONPATH=src python examples/minimap.py         # minimap replacing the scrollbar
 PYTHONPATH=src python examples/chat.py            # streaming chat
+PYTHONPATH=src python examples/compare.py         # live FPS: VerticalScroll vs FlowView
+PYTHONPATH=src python examples/benchmark.py       # prints the benchmark table above
 ```
 
 `showcase.py` demonstrates variable-height panels, a colored per-state gutter,
