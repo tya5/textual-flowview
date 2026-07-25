@@ -4,7 +4,8 @@ Demonstrates: variable-height panels, a colored per-state gutter, streaming
 updates, independent body/gutter refresh, and sticky-bottom auto-follow.
 
 Run:  PYTHONPATH=src python examples/showcase.py
-Keys: q quit · r replay stream · j/k or wheel scroll · click to select
+Keys: q quit · r replay stream · c fold/unfold all · j/k or wheel scroll
+      click an item to fold/unfold just that one
 """
 
 from __future__ import annotations
@@ -232,6 +233,17 @@ class ShowcaseApp(App):
         for entry in self.feed:
             entry.item.collapsed = self._folded
             entry.update()
+
+    def on_flow_view_selected(self, event: FlowView.Selected) -> None:
+        # Click an item to toggle just that one. We clear the selection right
+        # after so clicking the same item again re-fires (select() dedupes a
+        # still-selected entry), giving a clean per-item toggle.
+        entry = event.entry
+        if entry is None:
+            return
+        entry.item.collapsed = not entry.item.collapsed
+        entry.update()
+        event.control.clear_selection()
 
     async def _stream(self) -> None:
         entry = self.feed.append(Event("log", "assistant", "09:31:31", ""))
