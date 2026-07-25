@@ -38,8 +38,14 @@ The container mounts one widget per row — O(N) DOM, layout, and memory that gr
 with the list. FlowView **paints** the visible rows, so it is O(viewport): **one
 widget regardless of N**, a flat build and re-layout, and scrolling that stays
 smooth. `examples/compare.py` shows it live with an FPS meter — flip `c` / `f` to
-watch it go from **~25 FPS / 1500 widgets** (container) to **~60 FPS / 3 widgets**
-(FlowView) on the same 1500-row list.
+watch it go from **~20 FPS / 1500 widgets** (container) to **~60 FPS / 3 widgets**
+(FlowView) on the same 1500-row list. For a true visual side-by-side, run it in
+two panes (each is its own process / render loop):
+
+```bash
+PYTHONPATH=src python examples/compare.py flowview     # left pane
+PYTHONPATH=src python examples/compare.py container    # right pane
+```
 
 ## Core ideas
 
