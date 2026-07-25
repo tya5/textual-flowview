@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, ClassVar, Generic, TypeVar
 
 from rich.console import RenderableType
@@ -245,6 +246,69 @@ class FlowView(ScrollView, Generic[T]):
     def clear_selection(self) -> None:
         """Clear the current selection (if any)."""
         self.select(None)
+
+    # -- search ------------------------------------------------------------
+
+    def find(self, predicate: Callable[[Entry[T]], bool]) -> list[Entry[T]]:
+        """All entries matching ``predicate``, in model order.
+
+        The predicate receives the :class:`Entry`, so it can test the item,
+        state, or metadata. Hidden entries are included — search reaches inside
+        collapsed groups; use :meth:`reveal` to bring a hit into view."""
+        return [entry for entry in self._model if predicate(entry)]
+
+    def find_next(
+        self,
+        predicate: Callable[[Entry[T]], bool],
+        *,
+        after: Entry[T] | None = None,
+        wrap: bool = True,
+    ) -> Entry[T] | None:
+        """First match strictly after ``after`` (default: the selection) in
+        model order, wrapping around unless ``wrap`` is False."""
+        entries = list(self._model)
+        origin = after if after is not None else self._selected
+        start = 0
+        if origin is not None and origin in entries:
+            start = entries.index(origin) + 1
+        for entry in entries[start:]:
+            if predicate(entry):
+                return entry
+        if wrap:
+            for entry in entries[:start]:
+                if predicate(entry):
+                    return entry
+        return None
+
+    def find_previous(
+        self,
+        predicate: Callable[[Entry[T]], bool],
+        *,
+        before: Entry[T] | None = None,
+        wrap: bool = True,
+    ) -> Entry[T] | None:
+        """First match strictly before ``before`` (default: the selection) in
+        model order, wrapping around unless ``wrap`` is False."""
+        entries = list(self._model)
+        origin = before if before is not None else self._selected
+        start = len(entries)
+        if origin is not None and origin in entries:
+            start = entries.index(origin)
+        for entry in reversed(entries[:start]):
+            if predicate(entry):
+                return entry
+        if wrap:
+            for entry in reversed(entries[start:]):
+                if predicate(entry):
+                    return entry
+        return None
+
+    def reveal(self, entry: Entry[T]) -> None:
+        """Bring ``entry`` into view, un-hiding it first if it was hidden
+        (e.g. a search hit inside a collapsed group)."""
+        if entry.hidden:
+            entry.show()
+        self.ensure_visible(entry)
 
     # -- input -------------------------------------------------------------
 

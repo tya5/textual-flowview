@@ -4,8 +4,8 @@ Demonstrates: variable-height panels, a colored per-state gutter, streaming
 updates, independent body/gutter refresh, and sticky-bottom auto-follow.
 
 Run:  PYTHONPATH=src python examples/showcase.py
-Keys: q quit · r replay stream · c fold/unfold all · j/k or wheel scroll
-      click an item to fold/unfold just that one
+Keys: q quit · r replay stream · c fold/unfold all · n next non-OK entry
+      j/k or wheel scroll · click an item to fold/unfold just that one
 """
 
 from __future__ import annotations
@@ -196,6 +196,7 @@ class ShowcaseApp(App):
         ("q", "quit", "Quit"),
         ("r", "replay", "Replay stream"),
         ("c", "fold", "Fold / unfold"),
+        ("n", "next_issue", "Next non-OK"),
         ("j", "scroll_down", "Down"),
         ("k", "scroll_up", "Up"),
     ]
@@ -225,6 +226,17 @@ class ShowcaseApp(App):
 
     def action_replay(self) -> None:
         self.call_later(self._stream)
+
+    def action_next_issue(self) -> None:
+        # Search: jump to the next entry whose state isn't SUCCESS/DEFAULT and
+        # reveal it (un-hiding + scrolling into view). find_next uses the
+        # current selection as its origin and wraps around.
+        view = self.query_one(FlowView)
+        hit = view.find_next(
+            lambda e: e.state in (EntryState.RUNNING, EntryState.ERROR, EntryState.CANCELLED)
+        )
+        if hit is not None:
+            view.reveal(hit)
 
     def action_fold(self) -> None:
         # Collapse is purely a presenter concern: flip a flag and update().

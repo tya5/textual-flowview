@@ -1,0 +1,121 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import pytest
+from rich.text import Text
+from textual.app import App, ComposeResult
+
+from textual_flowview import EntryState, FlowModel, FlowView, Presentation
+
+
+@dataclass
+class Row:
+    text: str
+
+
+class RowPresenter:
+    async def present(self, item: Row, width: int) -> Presentation:
+        return Presentation(height=1, renderable=Text(item.text))
+
+
+def _app(model) -> App:
+    class FlowApp(App):
+        def compose(self) -> ComposeResult:
+            yield FlowView(model=model, presenter=RowPresenter())
+
+    return FlowApp()
+
+
+def _has(sub: str):
+    return lambda e: sub in e.item.text
+
+
+@pytest.mark.asyncio
+async def test_find_returns_all_matches_in_order() -> None:
+    model: FlowModel[Row] = FlowModel()
+    es = [model.append(Row(t)) for t in ["apple", "banana", "apricot", "cherry", "avocado"]]
+    app = _app(model)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        hits = view.find(_has("a"))
+        assert hits == [es[0], es[1], es[2], es[4]]  # cherry excluded
+
+
+@pytest.mark.asyncio
+async def test_find_next_advances_and_wraps() -> None:
+    model: FlowModel[Row] = FlowModel()
+    es = [model.append(Row(t)) for t in ["a1", "b", "a2", "c", "a3"]]
+    app = _app(model)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        pred = _has("a")
+        assert view.find_next(pred, after=es[0]) is es[2]
+        assert view.find_next(pred, after=es[2]) is es[4]
+        # wraps back to the first match
+        assert view.find_next(pred, after=es[4]) is es[0]
+        # no wrap -> None past the last match
+        assert view.find_next(pred, after=es[4], wrap=False) is None
+
+
+@pytest.mark.asyncio
+async def test_find_next_uses_selection_as_origin() -> None:
+    model: FlowModel[Row] = FlowModel()
+    es = [model.append(Row(t)) for t in ["a1", "a2", "a3"]]
+    app = _app(model)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        view.select(es[0])
+        await pilot.pause()
+        assert view.find_next(_has("a")) is es[1]
+
+
+@pytest.mark.asyncio
+async def test_find_previous_advances_and_wraps() -> None:
+    model: FlowModel[Row] = FlowModel()
+    es = [model.append(Row(t)) for t in ["a1", "b", "a2", "c", "a3"]]
+    app = _app(model)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        pred = _has("a")
+        assert view.find_previous(pred, before=es[2]) is es[0]
+        assert view.find_previous(pred, before=es[0]) is es[4]  # wraps
+        assert view.find_previous(pred, before=es[0], wrap=False) is None
+
+
+@pytest.mark.asyncio
+async def test_find_can_match_state() -> None:
+    model: FlowModel[Row] = FlowModel()
+    a = model.append(Row("x"))
+    b = model.append(Row("y"))
+    b.set_state(EntryState.ERROR)
+    app = _app(model)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        assert view.find(lambda e: e.state is EntryState.ERROR) == [b]
+        assert a not in view.find(lambda e: e.state is EntryState.ERROR)
+
+
+@pytest.mark.asyncio
+async def test_reveal_unhides_and_scrolls() -> None:
+    model: FlowModel[Row] = FlowModel()
+    es = [model.append(Row(f"r{i}")) for i in range(60)]  # taller than viewport
+    app = _app(model)
+    async with app.run_test(size=(30, 10)) as pilot:
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        target = es[50]
+        target.hide()
+        await pilot.pause()
+        assert target not in view._viewport.entries
+        view.reveal(target)
+        await pilot.pause()
+        assert not target.hidden
+        assert target in view._viewport.entries
+        # brought into the visible range
+        assert target in view._viewport.visible_range().entries

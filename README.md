@@ -184,6 +184,21 @@ Style the highlight via the `flowview--selected` component class:
 FlowView > .flowview--selected { background: $accent 30%; }
 ```
 
+## Search
+
+Query entries with a predicate (over the item, state, or metadata) and jump to
+hits. Search covers the whole model — including hidden entries inside collapsed
+groups — and `reveal()` un-hides a hit before scrolling to it:
+
+```python
+errors = flow.find(lambda e: e.state is EntryState.ERROR)
+
+hit = flow.find_next(lambda e: "TODO" in e.item.text)   # after the selection, wraps
+flow.find_previous(predicate)
+if hit:
+    flow.reveal(hit)        # un-hide if collapsed, then scroll into view
+```
+
 ## Public API (widget)
 
 | Method | Effect |
@@ -191,7 +206,9 @@ FlowView > .flowview--selected { background: $accent 30%; }
 | `scroll_to_top()` / `scroll_to_bottom()` | Jump to either edge. |
 | `scroll_to_entry(entry)` | Put `entry` at the top. |
 | `ensure_visible(entry)` | Scroll the minimum to reveal `entry`. |
+| `reveal(entry)` | Un-hide if collapsed, then ensure visible. |
 | `select(entry)` / `clear_selection()` | Change selection. |
+| `find(pred)` / `find_next(pred)` / `find_previous(pred)` | Search entries. |
 
 ## Examples
 

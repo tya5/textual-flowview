@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Generic, Protocol, TypeVar
 
 from ._entry import Entry
@@ -45,7 +46,7 @@ class FlowModel(Generic[T]):
     def __len__(self) -> int:
         return len(self._entries)
 
-    def __iter__(self):  # type: ignore[no-untyped-def]
+    def __iter__(self) -> Iterator[Entry[T]]:
         return iter(self._entries)
 
     def append(self, item: T) -> Entry[T]:
