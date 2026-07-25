@@ -43,6 +43,15 @@ asyncio_mode = "auto"
 line-length = 100
 target-version = "py311"
 
+[tool.ruff.lint]
+# Pinned explicitly so results are identical regardless of the ruff version
+# CI happens to install.
+select = ["E", "F", "W", "I", "UP", "B", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests intentionally unpack tuples they don't fully use.
+"tests/*" = ["RUF059"]
+
 [tool.mypy]
 python_version = "3.11"
 strict = true

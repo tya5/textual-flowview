@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Generic, TypeVar
+from typing import Any, ClassVar, Generic, TypeVar
 
 from rich.console import RenderableType
 from rich.panel import Panel
@@ -42,7 +42,7 @@ class FlowView(ScrollView, Generic[T]):
 
     can_focus = True
 
-    COMPONENT_CLASSES = {"flowview--selected"}
+    COMPONENT_CLASSES: ClassVar[set[str]] = {"flowview--selected"}
     """
     | Class | Applied to |
     | :- | :- |
@@ -62,13 +62,13 @@ class FlowView(ScrollView, Generic[T]):
         :class:`FlowView` that emitted it.
         """
 
-        def __init__(self, flow_view: "FlowView[Any]", entry: "Entry[Any] | None") -> None:
+        def __init__(self, flow_view: FlowView[Any], entry: Entry[Any] | None) -> None:
             self.flow_view = flow_view
             self.entry = entry
             super().__init__()
 
         @property
-        def control(self) -> "FlowView[Any]":
+        def control(self) -> FlowView[Any]:
             return self.flow_view
 
     def __init__(
@@ -356,7 +356,7 @@ class FlowView(ScrollView, Generic[T]):
                 errored = False
                 try:
                     presentation = await self._presenter.present(entry.item, width)
-                except Exception as exc:  # noqa: BLE001 - surface presenter failures
+                except Exception as exc:
                     presentation = self._error_presentation(exc)
                     errored = True
                 if not entry.alive:

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Generic, Mapping, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from ._state import EntryState
 
@@ -34,14 +35,14 @@ class Entry(Generic[T]):
     """
 
     __slots__ = (
-        "_model",
+        "_alive",
+        "_decor_revision",
         "_id",
         "_item",
-        "_revision",
-        "_alive",
-        "_state",
         "_metadata",
-        "_decor_revision",
+        "_model",
+        "_revision",
+        "_state",
     )
 
     def __init__(self, model: FlowModel[T], id: int, item: T) -> None:

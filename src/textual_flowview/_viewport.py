@@ -6,7 +6,7 @@ from ._anchor import Anchor
 from ._entry import Entry
 from ._layout import FlowLayout
 
-__all__ = ["Viewport", "VisibleRange", "AnchorState"]
+__all__ = ["AnchorState", "Viewport", "VisibleRange"]
 
 T = TypeVar("T")
 
@@ -14,7 +14,7 @@ T = TypeVar("T")
 class VisibleRange(Generic[T]):
     """The slice of entries the view should draw, plus paint geometry."""
 
-    __slots__ = ("start", "stop", "entries", "first_offset")
+    __slots__ = ("entries", "first_offset", "start", "stop")
 
     def __init__(
         self,
@@ -244,7 +244,7 @@ class Viewport(Generic[T]):
 
 
 class AnchorState(Generic[T]):
-    __slots__ = ("stick_bottom", "top_entry", "delta")
+    __slots__ = ("delta", "stick_bottom", "top_entry")
 
     def __init__(self, stick_bottom: bool, top_entry: Entry[T] | None, delta: int) -> None:
         self.stick_bottom = stick_bottom

@@ -26,8 +26,8 @@ class FlowDecorator(Protocol[T]):
     ``decorate`` is **synchronous** and expected to be cheap: it may be called
     on every repaint. It must not trigger presentation or reflow. It reads the
     entry's :attr:`~Entry.state`, :attr:`~Entry.metadata`, and item, and
-    returns a renderable sized to ``width`` (the gutter width) × ``height`` (the
-    entry's body height in rows).
+    returns a renderable sized to ``width`` (the gutter width) by ``height``
+    (the entry's body height in rows).
     """
 
     def decorate(self, entry: Entry[T], width: int, height: int) -> RenderableType: ...
