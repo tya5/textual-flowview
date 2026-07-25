@@ -152,6 +152,23 @@ async def test_body_width_excludes_gutter() -> None:
 
 
 @pytest.mark.asyncio
+async def test_gutter_does_not_collapse_heights() -> None:
+    # Regression: with a gutter, presentations are cached at the body width.
+    # The viewport must resolve real heights (not the estimate=1 fallback),
+    # otherwise every multi-row item collapses to a single line.
+    model: FlowModel[Job] = FlowModel()
+    for i in range(5):
+        model.append(Job(f"job-{i}"))  # each presents at height 2
+    app = _app(model, CountingPresenter(), decorator=StateDecorator(), gutter_width=3)
+    async with app.run_test(size=(40, 20)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        # 5 items x 2 rows each = 10 (not 5, which is the collapsed estimate).
+        assert view._viewport.total_height == 10
+
+
+@pytest.mark.asyncio
 async def test_render_error_sets_error_state() -> None:
     model: FlowModel[Job] = FlowModel()
     entry = model.append(Job("bad"))

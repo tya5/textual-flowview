@@ -66,6 +66,29 @@ async def test_streaming_update_reflows() -> None:
 
 
 @pytest.mark.asyncio
+async def test_rapid_streaming_converges_to_latest_revision() -> None:
+    # Regression: a burst of update()s must converge to the final revision's
+    # presentation (no dropped final present) and must not leak per-entry
+    # bookkeeping.
+    model: FlowModel[Note] = FlowModel()
+    entry = model.append(Note(text="", lines=1))
+    app = _app(model, NotePresenter())
+    async with app.run_test(size=(40, 20)) as pilot:
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        for i in range(30):
+            entry.item.text = f"chunk-{i}"
+            entry.item.lines = 1 + (i % 3)
+            entry.update()
+        await pilot.pause()
+        await pilot.pause()
+        pres = view._layout.get(entry, view._body_width())
+        assert pres is not None
+        assert "chunk-29" in pres.renderable.plain  # final text won
+        assert view._presenting == set()  # no leaked in-flight bookkeeping
+
+
+@pytest.mark.asyncio
 async def test_presenter_error_does_not_crash() -> None:
     model: FlowModel[Note] = FlowModel()
     entry = model.append(Note(text="bad"))

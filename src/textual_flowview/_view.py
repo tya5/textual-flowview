@@ -106,8 +106,8 @@ class FlowView(ScrollView, Generic[T]):
         self._strip_cache: dict[int, tuple[int, int, list[Strip]]] = {}
         # id -> (decor_revision, width, height, strips)
         self._gutter_cache: dict[int, tuple[int, int, int, list[Strip]]] = {}
-        # (id, revision, width) currently being presented
-        self._inflight: set[tuple[int, int, int]] = set()
+        # entry ids with an active presentation loop (one worker per entry).
+        self._presenting: set[int] = set()
         # STICKY_BOTTOM: are we currently glued to the bottom edge?
         self._follow_bottom = anchor is Anchor.STICKY_BOTTOM
         # Single-selection state, owned by the view (not the entry).
@@ -171,7 +171,7 @@ class FlowView(ScrollView, Generic[T]):
         self._layout.clear()
         self._strip_cache.clear()
         self._gutter_cache.clear()
-        self._inflight.clear()
+        self._presenting.clear()
         self._viewport.set_entries([])
         self._refresh_layout(None)
         self.scroll_to(y=0, animate=False)
@@ -327,39 +327,53 @@ class FlowView(ScrollView, Generic[T]):
         width = self._body_width()
         if self._layout.get(entry, width) is not None:
             return
-        key = (entry.id, entry.revision, width)
-        if key in self._inflight:
+        if entry.id in self._presenting:
+            # A loop is already converging this entry to its latest revision;
+            # it will pick up any newer revision on its own.
             return
-        self._inflight.add(key)
-        # exclusive per-entry group: a newer present cancels the stale one
-        # (best-effort cancellation).
+        self._presenting.add(entry.id)
         self.run_worker(
-            self._present_worker(entry, width, entry.revision),
+            self._present_loop(entry, width),
             group=f"flowview-present-{entry.id}",
             exclusive=True,
         )
 
-    async def _present_worker(self, entry: Entry[T], width: int, revision: int) -> None:
+    async def _present_loop(self, entry: Entry[T], width: int) -> None:
+        """Present ``entry`` repeatedly until the stored result matches its
+        latest revision.
+
+        One loop per entry (guarded by ``_presenting``) rather than one worker
+        per ``update()``. Streaming bumps the revision many times a second; the
+        loop simply re-presents for the newest revision after each pass, so it
+        always converges to the final state — no per-revision worker churn, no
+        dropped final present, no leaked bookkeeping.
+        """
         try:
-            errored = False
-            try:
-                presentation = await self._presenter.present(entry.item, width)
-            except Exception as exc:  # noqa: BLE001 - surface any presenter failure
-                presentation = self._error_presentation(exc)
-                errored = True
-            # Discard stale results: a newer revision (or removal) supersedes.
-            if not entry.alive or entry.revision != revision:
-                return
-            self._layout.store(entry.id, width, revision, presentation)
-            self._strip_cache.pop(entry.id, None)
-            state = self._capture()
-            self._refresh_layout(state)
-            if errored:
-                # Spec: a rendering error also flips the entry to ERROR so the
-                # gutter reflects it. This does not re-present the body.
-                entry.set_state(EntryState.ERROR)
+            while entry.alive:
+                revision = entry.revision
+                if self._layout.get(entry, width) is not None:
+                    break
+                errored = False
+                try:
+                    presentation = await self._presenter.present(entry.item, width)
+                except Exception as exc:  # noqa: BLE001 - surface presenter failures
+                    presentation = self._error_presentation(exc)
+                    errored = True
+                if not entry.alive:
+                    break
+                self._layout.store(entry.id, width, revision, presentation)
+                self._strip_cache.pop(entry.id, None)
+                state = self._capture()
+                self._refresh_layout(state)
+                if errored:
+                    # Spec: a rendering error also flips the entry to ERROR so
+                    # the gutter reflects it. Does not re-present the body.
+                    entry.set_state(EntryState.ERROR)
+                if entry.revision == revision:
+                    break  # converged to the latest revision
+                # Otherwise the item changed mid-present; loop for the new one.
         finally:
-            self._inflight.discard((entry.id, revision, width))
+            self._presenting.discard(entry.id)
 
     def _error_presentation(self, exc: BaseException) -> Presentation:
         body = Text(f"{type(exc).__name__}: {exc}", style="red")
@@ -381,7 +395,10 @@ class FlowView(ScrollView, Generic[T]):
         return max(1, self._content_width() - self._gutter_width)
 
     def _sync_geometry(self) -> None:
-        self._viewport.set_size(self._content_width(), self._content_height())
+        # The viewport looks up heights from the layout, which are cached under
+        # the *body* width (content width minus the gutter). Feed it the body
+        # width so height lookups hit instead of falling back to the estimate.
+        self._viewport.set_size(self._body_width(), self._content_height())
 
     def _sync_scroll(self) -> None:
         _, scroll_y = self.scroll_offset

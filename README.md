@@ -136,6 +136,16 @@ FlowView > .flowview--selected { background: $accent 30%; }
 | `ensure_visible(entry)` | Scroll the minimum to reveal `entry`. |
 | `select(entry)` / `clear_selection()` | Change selection. |
 
+## Examples
+
+```bash
+PYTHONPATH=src python examples/showcase.py   # live AI-agent activity feed
+PYTHONPATH=src python examples/chat.py        # streaming chat
+```
+
+`showcase.py` demonstrates variable-height panels, a colored per-state gutter,
+streaming updates, and sticky-bottom auto-follow in one screen.
+
 ## License
 
 MIT
