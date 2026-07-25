@@ -34,6 +34,7 @@ class Event:
     time: str
     body: str = ""
     meta: dict = field(default_factory=dict)
+    collapsed: bool = False
 
 
 STATE_ICON = {
@@ -84,12 +85,19 @@ class ActivityPresenter:
 
     async def present(self, item: Event, width: int) -> Presentation:
         border = KIND_COLOR.get(item.kind, "grey50")
+        chevron = "▸" if item.collapsed else "▾"
         title = Text.assemble(
+            (f"{chevron} ", "grey62"),
             (f" {item.kind.upper()} ", f"reverse {border}"),
             ("  ", ""),
             (item.title, "bold"),
         )
         subtitle = Text(item.time, style="grey50")
+
+        # Collapsed: a single compact summary line — no body re-rendered.
+        if item.collapsed:
+            line = Text.assemble(title, ("   ", ""), (item.time, "grey42"))
+            return Presentation(height=1, renderable=line)
 
         body: RenderableType
         if item.kind == "code":
@@ -186,6 +194,7 @@ class ShowcaseApp(App):
     BINDINGS = [
         ("q", "quit", "Quit"),
         ("r", "replay", "Replay stream"),
+        ("c", "fold", "Fold / unfold"),
         ("j", "scroll_down", "Down"),
         ("k", "scroll_up", "Up"),
     ]
@@ -193,6 +202,7 @@ class ShowcaseApp(App):
     def __init__(self) -> None:
         super().__init__()
         self.feed: FlowModel[Event] = FlowModel()
+        self._folded = False
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -214,6 +224,14 @@ class ShowcaseApp(App):
 
     def action_replay(self) -> None:
         self.call_later(self._stream)
+
+    def action_fold(self) -> None:
+        # Collapse is purely a presenter concern: flip a flag and update().
+        # Each item re-presents at its new height; the flow reflows itself.
+        self._folded = not self._folded
+        for entry in self.feed:
+            entry.item.collapsed = self._folded
+            entry.update()
 
     async def _stream(self) -> None:
         entry = self.feed.append(Event("log", "assistant", "09:31:31", ""))
