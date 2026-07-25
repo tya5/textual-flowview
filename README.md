@@ -277,6 +277,15 @@ Clipboard copy uses Textual's own `App.copy_to_clipboard` (OSC 52):
 `copy_entry(entry)` copies it and returns it. Bind it to a key for a copy
 action (see `examples/showcase.py`, `y`).
 
+### Mouse text selection
+
+FlowView plugs into **Textual's native text selection**: drag to select across
+entries, and <kbd>Ctrl</kbd>+<kbd>C</kbd> copies (Textual's built-in binding).
+It works by stamping each rendered cell with its content offset and
+implementing `get_selection`, so selections are stable across scrolling and use
+the standard `screen--selection` style. No configuration needed — it's on by
+default (`ALLOW_SELECT`).
+
 ## Examples
 
 ```bash

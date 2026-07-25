@@ -10,6 +10,7 @@ from textual import events
 from textual.geometry import Size
 from textual.message import Message
 from textual.scroll_view import ScrollView
+from textual.selection import Selection
 from textual.strip import Strip
 
 from ._anchor import Anchor
@@ -403,21 +404,77 @@ class FlowView(ScrollView, Generic[T]):
         content_width = self._content_width()
         if content_width <= 0:
             return Strip.blank(self.size.width)
-        _, scroll_y = self.scroll_offset
+        scroll_y = int(self.scroll_offset.y)
+        virtual_y = y + scroll_y
 
         # Sticky header: overlay the pinned group header on the top rows.
-        sticky = self._sticky_state(int(scroll_y))
+        sticky = self._sticky_state(scroll_y)
         if sticky is not None:
             header, header_h, push = sticky
             if 0 <= y < header_h - push:
-                return self._compose_line(header, y + push, content_width, sticky=True)
+                line = self._compose_line(header, y + push, content_width, sticky=True)
+                return self._decorate_line(line, virtual_y)
 
-        virtual_y = y + scroll_y
         located = self._viewport.locate(virtual_y)
         if located is None:
             return Strip.blank(content_width)
         index, local_y = located
-        return self._compose_line(self._viewport.entries[index], local_y, content_width)
+        line = self._compose_line(self._viewport.entries[index], local_y, content_width)
+        return self._decorate_line(line, virtual_y)
+
+    def _decorate_line(self, line: Strip, virtual_y: int) -> Strip:
+        """Apply the text-selection highlight for this content row and stamp
+        each cell with its content offset so Textual's native mouse selection
+        (and Ctrl+C copy) can map clicks back to text."""
+        selection = self.text_selection
+        if selection is not None:
+            span = selection.get_span(virtual_y)
+            if span is not None:
+                width = line.cell_length
+                start, end = span
+                if end == -1 or end > width:
+                    end = width
+                start = max(0, min(start, width))
+                end = max(start, min(end, width))
+                if end > start:
+                    line = Strip.join(
+                        [
+                            line.crop(0, start),
+                            line.crop(start, end).apply_style(self.selection_style),
+                            line.crop(end, width),
+                        ]
+                    )
+        return line.apply_offsets(0, virtual_y)
+
+    def get_selection(self, selection: Selection) -> tuple[str, str] | None:
+        """Extract the text under ``selection`` (Textual's selection protocol).
+
+        Selection y-coordinates are content rows (stamped by
+        :meth:`_decorate_line`), so extraction is stable across scrolling."""
+        width = self._content_width()
+        if width <= 0 or selection.start is None or selection.end is None:
+            return None
+        parts: list[str] = []
+        for virtual_y in range(selection.start.y, selection.end.y + 1):
+            span = selection.get_span(virtual_y)
+            if span is None:
+                continue
+            row = self._content_row_text(virtual_y, width)
+            x0, x1 = span
+            if x1 == -1 or x1 > len(row):
+                x1 = len(row)
+            x0 = max(0, min(x0, len(row)))
+            parts.append(row[x0:x1])
+        return "\n".join(parts), "\n"
+
+    def _content_row_text(self, virtual_y: int, width: int) -> str:
+        located = self._viewport.locate(virtual_y)
+        if located is None:
+            return ""
+        index, local_y = located
+        # rstrip the padding the compositor adds to fill the width, so a
+        # "to end of line" selection doesn't copy trailing spaces.
+        return self._compose_line(self._viewport.entries[index], local_y, width).text.rstrip()
 
     def _compose_line(
         self, entry: Entry[T], local_y: int, content_width: int, *, sticky: bool = False
