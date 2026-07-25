@@ -23,10 +23,11 @@ from ._model import FlowModel
 from ._presentation import Presentation
 from ._presenter import FlowPresenter
 from ._state import EntryState
-from ._view import FlowView
+from ._view import AnimationHandle, FlowView
 
 __all__ = [
     "Anchor",
+    "AnimationHandle",
     "Entry",
     "EntryState",
     "FlowDecorator",

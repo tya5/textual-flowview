@@ -87,36 +87,35 @@ class ProgressApp(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield FlowView(
+        self.view: FlowView[Task] = FlowView(
             model=self.tasks,
             presenter=TaskPresenter(),
             decorator=SpinnerGutter(),
             gutter_width=2,
             animation_fps=12,   # FlowView drives the gutter spinner itself
         )
+        yield self.view
         yield Footer()
 
     def on_mount(self) -> None:
         self.action_restart()
-        self.set_interval(1 / 12, self._tick)
 
     def action_restart(self) -> None:
         self.tasks.clear()
         for name, speed in self.TASKS:
             entry = self.tasks.append(Task(name, speed=speed))
             entry.set_state(EntryState.RUNNING)
+            # One viewport-gated animation per task: FlowView pauses it when the
+            # task scrolls off screen and resumes it when it scrolls back — no
+            # app timer, no viewport bookkeeping.
+            self.view.animate_entry(entry, 1 / 15, self._advance)
 
-    def _tick(self) -> None:
-        # The gutter spinner is driven by FlowView (animation_fps). This timer
-        # only advances the body progress *value* — that's real data, so it
-        # belongs to the app: bump it and re-present the body.
-        for entry in self.tasks:
-            if entry.state is not EntryState.RUNNING:
-                continue
-            entry.item.progress = min(1.0, entry.item.progress + entry.item.speed)
-            entry.update()
-            if entry.item.progress >= 1.0:
-                entry.set_state(EntryState.SUCCESS)
+    def _advance(self, entry) -> None:
+        entry.item.progress = min(1.0, entry.item.progress + entry.item.speed)
+        entry.update()
+        if entry.item.progress >= 1.0:
+            entry.set_state(EntryState.SUCCESS)
+            self.view.stop_entry_animation(entry)
 
 
 if __name__ == "__main__":

@@ -291,12 +291,28 @@ FlowView caches an entry's render, so animation needs a clock:
   and re-derives the gutter itself — no app timer, no `set_metadata`, and the
   body is never re-presented. This is the cheap, recommended home for spinners.
 - **Body indicator** (progress bar, "thinking…") — the body's *content* changes
-  over time, which is your data, so the app advances it and calls
-  `entry.update()`. No reflow at fixed height. (A body value like progress can't
-  be driven by FlowView — it doesn't know the value.)
+  over time, so use a **viewport-gated animation**:
 
-See `examples/progress.py` — the gutter spinner is FlowView-driven; the app
-timer only advances the progress *value*.
+  ```python
+  def advance(e):
+      e.item.progress = min(1.0, e.item.progress + 0.05)
+      e.update()
+      if e.item.progress >= 1.0:
+          view.stop_entry_animation(e)
+
+  view.animate_entry(entry, 1 / 15, advance)   # runs only while on screen
+  ```
+
+  `animate_entry(entry, interval, callback)` ties the timer to the viewport:
+  FlowView **pauses it when the entry scrolls off screen and resumes it when it
+  scrolls back**, so off-screen entries do no work. `stop_entry_animation(entry)`
+  (or the returned handle's `.stop()`) cancels it; removal cleans it up.
+
+  Even a plain `entry.update()` on an **off-screen** entry is cheap: FlowView
+  **defers** the re-present and reflow until the entry scrolls into view.
+
+See `examples/progress.py` — the gutter spinner is FlowView-driven
+(`animation_fps`); each task's progress is a viewport-gated `animate_entry`.
 
 > Interactive Textual **widgets** (`Button`, `Select`, `Input`) are a different
 > thing — FlowView paints renderables rather than mounting child widgets, so

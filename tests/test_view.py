@@ -168,3 +168,73 @@ async def test_clear_resets_scroll_and_layout() -> None:
         assert len(model) == 0
         assert len(view._layout) == 0
         assert view.scroll_offset.y == 0
+
+
+class TextRow:
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+
+class CountingTextPresenter:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def present(self, item: TextRow, width: int) -> Presentation:
+        self.calls += 1
+        return Presentation(height=1, renderable=Text(item.text))
+
+
+@pytest.mark.asyncio
+async def test_offscreen_update_is_deferred_until_scrolled_in() -> None:
+    model: FlowModel[TextRow] = FlowModel()
+    rows = [model.append(TextRow(f"row-{i}")) for i in range(100)]
+    presenter = CountingTextPresenter()
+
+    class FlowApp(App):
+        def compose(self) -> ComposeResult:
+            yield FlowView(model=model, presenter=presenter, spacing=0)
+
+    app = FlowApp()
+    async with app.run_test(size=(40, 10)) as pilot:
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        width = view._body_width()
+
+        before = presenter.calls
+        rows[90].item.text = "CHANGED"
+        rows[90].update()  # off-screen
+        await pilot.pause()
+        await pilot.pause()
+        # deferred: not re-presented, presenter not run for it
+        assert view._layout.get(rows[90], width) is None
+        assert presenter.calls == before
+
+        view.scroll_to(y=85, animate=False)  # scroll it into view
+        await pilot.pause()
+        await pilot.pause()
+        pres = view._layout.get(rows[90], width)
+        assert pres is not None
+        assert "CHANGED" in pres.renderable.plain
+
+
+@pytest.mark.asyncio
+async def test_visible_update_repng_immediately() -> None:
+    model: FlowModel[TextRow] = FlowModel()
+    row = model.append(TextRow("first"))
+    presenter = CountingTextPresenter()
+
+    class FlowApp(App):
+        def compose(self) -> ComposeResult:
+            yield FlowView(model=model, presenter=presenter, spacing=0)
+
+    app = FlowApp()
+    async with app.run_test(size=(40, 10)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        row.item.text = "second"
+        row.update()  # visible
+        await pilot.pause()
+        await pilot.pause()
+        pres = view._layout.get(row, view._body_width())
+        assert pres is not None and "second" in pres.renderable.plain

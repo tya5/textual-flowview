@@ -13,6 +13,7 @@ from textual.message import Message
 from textual.scroll_view import ScrollView
 from textual.selection import Selection
 from textual.strip import Strip
+from textual.timer import Timer
 
 from ._anchor import Anchor
 from ._decorator import FlowDecorator
@@ -24,9 +25,22 @@ from ._presenter import FlowPresenter
 from ._state import EntryState
 from ._viewport import AnchorState, Viewport
 
-__all__ = ["FlowView"]
+__all__ = ["AnimationHandle", "FlowView"]
 
 T = TypeVar("T")
+
+
+class AnimationHandle:
+    """Cancels an entry animation started with :meth:`FlowView.animate`."""
+
+    __slots__ = ("_entry_id", "_view")
+
+    def __init__(self, view: FlowView[Any], entry_id: int) -> None:
+        self._view = view
+        self._entry_id = entry_id
+
+    def stop(self) -> None:
+        self._view._stop_animation(self._entry_id)
 
 
 class FlowView(ScrollView, Generic[T]):
@@ -162,6 +176,15 @@ class FlowView(ScrollView, Generic[T]):
         self._follow_top = anchor is Anchor.STICKY_TOP
         # Single-selection state, owned by the view (not the entry).
         self._selected: Entry[T] | None = None
+        # Per-entry animations: id -> (entry, callback, Timer). The timer runs
+        # only while the entry is on screen (paused when it scrolls out).
+        self._animations: dict[int, tuple[Entry[T], Callable[[Entry[T]], None], Timer]] = {}
+        # Ids of entries currently in the visible range (for animation gating).
+        self._visible_ids: set[int] = set()
+        # Ids of entries in the present band (visible + overscan + read-ahead).
+        # An update() to an entry outside this band is deferred until it scrolls
+        # in, so off-screen updates do no present/reflow work.
+        self._band_ids: set[int] = set()
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -216,9 +239,14 @@ class FlowView(ScrollView, Generic[T]):
         self._refresh_layout(state)
 
     def on_flow_update(self, entry: Entry[T]) -> None:
-        # The revision bump already makes the cached presentation a miss;
-        # drop the strip cache for this entry and re-present.
+        # The revision bump already makes the cached presentation a miss.
         self._strip_cache.pop(entry.id, None)
+        if entry.id not in self._band_ids:
+            # Off-screen: skip the present + reflow. The new revision is a cache
+            # miss, so the entry re-presents (and reflows) lazily when it scrolls
+            # into view — no wasted work for an update no one can see. Its layout
+            # keeps its last-known height until then, so nothing on screen shifts.
+            return
         state = self._capture()
         self._refresh_layout(state)
         self._present_entry(entry)
@@ -226,6 +254,7 @@ class FlowView(ScrollView, Generic[T]):
     def on_flow_remove(self, entry: Entry[T], index: int) -> None:
         if self._selected is entry:
             self.select(None)
+        self._stop_animation(entry.id)
         state = self._capture()
         self._layout.discard(entry.id)
         self._strip_cache.pop(entry.id, None)
@@ -246,6 +275,9 @@ class FlowView(ScrollView, Generic[T]):
     def on_flow_clear(self) -> None:
         if self._selected is not None:
             self.select(None)
+        for entry_id in list(self._animations):
+            self._stop_animation(entry_id)
+        self._visible_ids = set()
         self._layout.clear()
         self._strip_cache.clear()
         self._gutter_cache.clear()
@@ -315,6 +347,60 @@ class FlowView(ScrollView, Generic[T]):
     def clear_selection(self) -> None:
         """Clear the current selection (if any)."""
         self.select(None)
+
+    # -- per-entry animation (viewport-gated) ------------------------------
+
+    def animate_entry(
+        self,
+        entry: Entry[T],
+        interval: float,
+        callback: Callable[[Entry[T]], None],
+    ) -> AnimationHandle:
+        """Run ``callback(entry)`` every ``interval`` seconds — but **only while
+        the entry is on screen**.
+
+        FlowView pauses the timer when the entry scrolls out of the viewport and
+        resumes it when it scrolls back, so off-screen entries do no work (no
+        wasted ``update()`` / re-present). Typical use is animating a body
+        indicator::
+
+            def tick(e):
+                e.item.progress = min(1.0, e.item.progress + 0.05)
+                e.update()
+                if e.item.progress >= 1.0:
+                    view.stop_entry_animation(e)
+
+            view.animate_entry(entry, 0.1, tick)
+
+        Registering again for the same entry replaces the previous animation.
+        The animation is dropped automatically when the entry is removed.
+        """
+        self._stop_animation(entry.id)
+        timer = self.set_interval(interval, lambda: self._fire_animation(entry.id))
+        self._animations[entry.id] = (entry, callback, timer)
+        self._visible_ids = self._current_visible_ids()
+        if entry.id not in self._visible_ids:
+            timer.pause()
+        return AnimationHandle(self, entry.id)
+
+    def stop_entry_animation(self, entry: Entry[T]) -> None:
+        """Stop the animation started for ``entry`` (a no-op if none)."""
+        self._stop_animation(entry.id)
+
+    def _stop_animation(self, entry_id: int) -> None:
+        record = self._animations.pop(entry_id, None)
+        if record is not None:
+            record[2].stop()
+
+    def _fire_animation(self, entry_id: int) -> None:
+        record = self._animations.get(entry_id)
+        if record is None:
+            return
+        entry, callback, _ = record
+        if not entry.alive:
+            self._stop_animation(entry_id)
+            return
+        callback(entry)
 
     # -- search ------------------------------------------------------------
 
@@ -719,6 +805,29 @@ class FlowView(ScrollView, Generic[T]):
         _, scroll_y = self.scroll_offset
         self._viewport.scroll_to_offset(int(scroll_y))
 
+    def _current_visible_ids(self) -> set[int]:
+        if self._content_width() <= 0:
+            return set()
+        self._sync_geometry()
+        self._sync_scroll()
+        return {entry.id for entry in self._viewport.visible_range().entries}
+
+    def _sync_animation_visibility(self) -> None:
+        """Pause animations whose entry just scrolled out; resume those that
+        scrolled back in. Cheap no-op when nothing is animated."""
+        if not self._animations:
+            return
+        current = self._current_visible_ids()
+        for entry_id in current - self._visible_ids:
+            record = self._animations.get(entry_id)
+            if record is not None:
+                record[2].resume()
+        for entry_id in self._visible_ids - current:
+            record = self._animations.get(entry_id)
+            if record is not None:
+                record[2].pause()
+        self._visible_ids = current
+
     def _capture(self) -> AnchorState[T]:
         self._sync_geometry()
         self._sync_scroll()
@@ -736,6 +845,7 @@ class FlowView(ScrollView, Generic[T]):
             self._viewport.restore_anchor(anchor_state)
             self.scroll_to(y=self._viewport.scroll_y, animate=False)
         self.refresh()
+        self._sync_animation_visibility()
 
     def _present_visible(self) -> None:
         """Kick off presentation for the visible range plus the overscan band,
@@ -755,5 +865,8 @@ class FlowView(ScrollView, Generic[T]):
         down = overscan + (ahead if self._scroll_dir > 0 else 0)
         top = self._viewport.scroll_y - up
         bottom = self._viewport.scroll_y + height + down
-        for entry in self._viewport.entries_between(top, bottom):
+        band = self._viewport.entries_between(top, bottom)
+        self._band_ids = {entry.id for entry in band}
+        for entry in band:
             self._present_entry(entry)
+        self._sync_animation_visibility()
