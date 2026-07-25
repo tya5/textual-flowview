@@ -26,7 +26,7 @@ class RowPresenter:
 def _app(model, presenter) -> App:
     class FlowApp(App):
         def compose(self) -> ComposeResult:
-            yield FlowView(model=model, presenter=presenter)
+            yield FlowView(model=model, presenter=presenter, spacing=0)
 
     return FlowApp()
 

@@ -40,7 +40,7 @@ class BoomPresenter:
 def _app(model, presenter, **kw) -> App:
     class FlowApp(App):
         def compose(self) -> ComposeResult:
-            yield FlowView(model=model, presenter=presenter, **kw)
+            yield FlowView(model=model, presenter=presenter, spacing=0, **kw)
 
     return FlowApp()
 

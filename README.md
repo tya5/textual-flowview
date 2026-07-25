@@ -199,6 +199,26 @@ Customize with any standard Textual mechanism:
 
 The library never binds a key to an action for you — that's your app's call.
 
+## Spacing & full-row background
+
+`FlowView(spacing=1)` puts blank rows **between** entries (default `1`; set `0`
+to pack them). The gap is real layout — scrolling, hit-testing, and the minimap
+all account for it.
+
+Give an entry a **full-row background** — painted edge to edge across the
+gutter, body, and trailing padding — via `Presentation.background`, so a
+message reads as one continuous coloured block (no hand-rolled full-width grid,
+no gutter-colour coordination):
+
+```python
+async def present(self, item, width):
+    body = Text(item.text)
+    return Presentation(
+        height=..., renderable=body,
+        background="#2b2f37" if item.role == "user" else None,
+    )
+```
+
 ## Scroll anchoring
 
 ```python

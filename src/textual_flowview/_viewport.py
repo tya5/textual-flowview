@@ -60,11 +60,13 @@ class Viewport(Generic[T]):
         anchor: Anchor = Anchor.CURRENT,
         estimated_height: int = 1,
         overscan: int = 4,
+        spacing: int = 0,
     ) -> None:
         self._layout = layout
         self._anchor = anchor
         self._estimated_height = max(1, estimated_height)
         self._overscan = max(0, overscan)
+        self._spacing = max(0, spacing)
 
         self._entries: list[Entry[T]] = []
         self._width = 0
@@ -144,12 +146,19 @@ class Viewport(Generic[T]):
         return last if last is not None else self._estimated_height
 
     def _prefix(self) -> list[int]:
+        """Cumulative offsets: ``prefix[i]`` = the start row of entry ``i``,
+        ``prefix[len]`` = total height. ``spacing`` blank rows sit between
+        consecutive entries (not before the first or after the last)."""
         if self._offsets is None:
-            offsets = [0]
+            offsets = []
             acc = 0
-            for entry in self._entries:
-                acc += self._height_of(entry)
+            last = len(self._entries) - 1
+            for i, entry in enumerate(self._entries):
                 offsets.append(acc)
+                acc += self._height_of(entry)
+                if i < last:
+                    acc += self._spacing
+            offsets.append(acc)
             self._offsets = offsets
         return self._offsets
 
@@ -163,7 +172,7 @@ class Viewport(Generic[T]):
     def locate(self, y: int) -> tuple[int, int] | None:
         """Map a virtual y-offset to ``(entry_index, local_y)`` — the entry
         covering row ``y`` and the row within that entry. ``None`` if ``y`` is
-        outside the content."""
+        outside the content or falls in a spacer gap between entries."""
         prefix = self._prefix()
         n = len(self._entries)
         if n == 0 or y < 0 or y >= prefix[-1]:
@@ -171,7 +180,10 @@ class Viewport(Generic[T]):
         index = _upper_bound(prefix, y) - 1
         if index < 0 or index >= n:
             return None
-        return index, y - prefix[index]
+        local_y = y - prefix[index]
+        if local_y >= self._height_of(self._entries[index]):
+            return None  # in the spacer gap after this entry
+        return index, local_y
 
     def entries_between(self, top: int, bottom: int) -> list[Entry[T]]:
         """Entries whose rows intersect the virtual band ``[top, bottom)``.

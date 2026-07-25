@@ -27,7 +27,7 @@ class ClickApp(App):
         self.clicks: list[tuple] = []
 
     def compose(self) -> ComposeResult:
-        yield FlowView(model=self._model, presenter=RowPresenter(), **self._kw)
+        yield FlowView(model=self._model, presenter=RowPresenter(), spacing=0, **self._kw)
 
     def on_flow_view_clicked(self, event: FlowView.Clicked) -> None:
         self.clicks.append((event.entry, event.x, event.y))

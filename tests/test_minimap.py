@@ -28,7 +28,9 @@ class MiniApp(App):
         self._model = model
 
     def compose(self) -> ComposeResult:
-        self.view: FlowView = FlowView(model=self._model, presenter=RowPresenter(), id="flow")
+        self.view: FlowView = FlowView(
+            model=self._model, presenter=RowPresenter(), spacing=0, id="flow"
+        )
         with Horizontal():
             yield self.view
             yield FlowMinimap(flow_view=self.view, id="mini")

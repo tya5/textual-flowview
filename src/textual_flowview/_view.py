@@ -5,6 +5,7 @@ from typing import Any, ClassVar, Generic, TypeVar
 
 from rich.console import Console, RenderableType
 from rich.panel import Panel
+from rich.style import Style
 from rich.text import Text
 from textual import events
 from textual.geometry import Size
@@ -113,6 +114,7 @@ class FlowView(ScrollView, Generic[T]):
         estimated_height: int = 1,
         overscan: int = 4,
         read_ahead: int | None = None,
+        spacing: int = 1,
         placeholder: RenderableType = "Loading...",
         name: str | None = None,
         id: str | None = None,
@@ -141,6 +143,7 @@ class FlowView(ScrollView, Generic[T]):
             anchor=anchor,
             estimated_height=estimated_height,
             overscan=overscan,
+            spacing=spacing,
         )
         self._placeholder = placeholder
         # id -> (revision, width, strips)
@@ -514,6 +517,12 @@ class FlowView(ScrollView, Generic[T]):
             line = Strip.join([gutter_line, body_line])
         else:
             line = body_line
+
+        # Full-row background: paint the whole line (gutter + body + padding)
+        # edge to edge, so the entry reads as one continuous coloured block.
+        presentation = self._layout.get(entry, body_w)
+        if presentation is not None and presentation.background is not None:
+            line = line.apply_style(Style(bgcolor=presentation.background))
 
         if sticky:
             line = line.apply_style(self.get_component_rich_style("flowview--sticky-header"))

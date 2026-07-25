@@ -33,6 +33,7 @@ def _app(model, sticky=True) -> App:
                 model=model,
                 presenter=NodePresenter(),
                 sticky_header=_is_header if sticky else None,
+                spacing=0,
             )
 
     return FlowApp()

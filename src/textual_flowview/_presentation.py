@@ -22,3 +22,9 @@ class Presentation:
     renderable: RenderableType
     """Any Rich renderable (``Text``, ``Panel``, ``Table``, a Textual
     ``Content``, ...) to be drawn for this item."""
+
+    background: str | None = None
+    """Optional background colour for the *whole row* — painted edge to edge
+    across the gutter, body, and trailing padding, so the entry reads as one
+    continuous coloured block (e.g. a user's own message). A colour string
+    like ``"#2b2f37"``; ``None`` leaves the row transparent."""

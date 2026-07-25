@@ -6,8 +6,8 @@ pane. This file is a STANDALONE PoC — it does not import or modify anything
 from the reyn repository.
 
 Layout: a slim status line (top), a scrollable FlowView (main, the ONLY rich
-widget), and a bottom Input box — Claude-Code-like chrome, not a multi-panel
-dashboard.
+widget), and a bottom multi-line Composer — Claude-Code-like chrome, not a
+multi-panel dashboard.
 
 Run interactively:
     PYTHONPATH=/Users/yasudatetsuya/Workspace/textual-flowview/src \\
@@ -31,10 +31,11 @@ from typing import Any
 
 from rich.console import Console, Group, RenderableType
 from rich.markdown import Markdown
-from rich.panel import Panel
 from rich.text import Text
+from textual import events
 from textual.app import App, ComposeResult
-from textual.widgets import Input, Static
+from textual.message import Message
+from textual.widgets import Static, TextArea
 
 from textual_flowview import (
     Anchor,
@@ -43,11 +44,23 @@ from textual_flowview import (
     FlowModel,
     FlowView,
     Presentation,
-    StateDecorator,
 )
 
 HERE = Path(__file__).parent
 CONVERSATION_FIXTURE = HERE / "conversation.json"
+
+# --------------------------------------------------------------------------
+# reyn's own Claude-Code-style palette, copied verbatim from
+# `src/reyn/interfaces/repl/renderer.py` (read-only reference — that file is
+# NOT imported or modified). Restyling this PoC to match reyn's own renderer
+# per owner feedback: too cluttered, de-frame it, dot-gutter it.
+# --------------------------------------------------------------------------
+_CC_TEXT = "default"    # terminal default fg — normal text + markers (no forced colour)
+_CC_DIM = "#6b7280"     # low-importance / ambient
+_CC_DONE = "#7ee787"    # green — completion / success
+_CC_ERR = "#f97066"     # red — failure / error
+_CC_WARN = "#e3b341"    # amber — an intervention that needs the user to act / running
+_CC_USER_BG = "#2b2f37"  # subtle full-width background block behind the user's own line
 
 STREAM_WORDS = (
     "Sure — resizing the terminal reflows the whole conversation pane live, "
@@ -62,13 +75,6 @@ STATE_MAP = {
     "success": EntryState.SUCCESS,
     "error": EntryState.ERROR,
     "cancelled": EntryState.CANCELLED,
-}
-
-TOOL_ICON = {
-    "grep": "\U0001f50d",
-    "read_file": "\U0001f4c4",
-    "edit": "✏️",
-    "sandboxed_exec": "⚙️",
 }
 
 CHIP_INDENT = 2
@@ -110,7 +116,11 @@ def chip_spans(options: list[str]) -> list[tuple[int, int, str]]:
 
 
 class ReynPresenter:
-    """Turns a ConvItem into a Panel/Group sized to the available width.
+    """Turns a ConvItem into a bare renderable sized to the available width —
+    NO Panel/box, NO role-label text. Claude-Code style: the gutter dot
+    (painted by ``ReynGutter``) plus, for the user's own line, a full-width
+    background block are the only visual affordances distinguishing message
+    kinds.
 
     This is the ONE presenter for all three reyn-shaped entry kinds
     (message / tool_call / ask_user) — reyn's real integration point would
@@ -133,48 +143,67 @@ class ReynPresenter:
 
     def _present_message(self, item: ConvItem, width: int) -> Presentation:
         is_user = item.role == "user"
-        style = "cyan" if is_user else "green"
-        title = "You" if is_user else "Assistant"
-        body: RenderableType = Markdown(item.text or " ")
-        panel = Panel(
-            Group(body),
-            title=title,
-            title_align="left",
-            border_style=style,
-            width=width,
+        # No "You" / "Assistant" title, no Panel — just the body. Assistant
+        # replies render as markdown (reyn's `_body_renderable` does the
+        # same for "agent"-kind bodies); the user's own line is plain text.
+        # The user's line gets a full-row background via Presentation.background,
+        # which FlowView paints edge to edge across gutter + body — no more
+        # hand-rolled expand=True grid, and no gutter-background coordination.
+        body: RenderableType = Text(item.text or " ", style=_CC_DIM) if is_user else Markdown(item.text or " ")
+        return Presentation(
+            height=self._measure(body, width),
+            renderable=body,
+            background=_CC_USER_BG if is_user else None,
         )
-        return Presentation(height=self._measure(panel, width), renderable=panel)
 
     def _present_tool_call(self, item: ConvItem, width: int) -> Presentation:
-        icon = TOOL_ICON.get(item.tool or "", "\U0001f6e0️")
         head = Text.assemble(
-            (f"{icon} ", ""),
-            (f"{item.tool}", "bold magenta"),
+            (f"{item.tool}", f"bold {_CC_DIM}"),
             ("  ", ""),
-            (item.text, "grey62"),
+            (item.text, _CC_DIM),
         )
         lines: list[RenderableType] = [head]
         if item.result:
-            lines.append(Text(f"  └─ {item.result}", style="grey50"))
+            lines.append(Text(f"  └─ {item.result}", style=_CC_DIM))
         group = Group(*lines)
         return Presentation(height=self._measure(group, width), renderable=group)
 
     def _present_ask_user(self, item: ConvItem, width: int) -> Presentation:
-        head = Text.assemble(("❓ ask_user  ", "bold yellow"), (item.text, ""))
+        head = Text(item.text, style=_CC_TEXT)
         if item.chosen is None:
             chips = Text(" " * CHIP_INDENT)
             for i, label in enumerate(item.options):
-                chips.append(_chip(i, label), style="bold on grey30")
+                chips.append(_chip(i, label), style=f"bold {_CC_WARN}")
                 chips.append(" " * CHIP_GAP)
-            body = Group(head, chips, Text("  ↑ click an option", style="grey50"))
+            body = Group(head, chips, Text("  ↑ click an option", style=_CC_DIM))
             return Presentation(height=3, renderable=body)
-        resolved = Text.assemble(("  ✓ resolved: ", "grey50"), (item.chosen, "bold green"))
+        resolved = Text.assemble(("  ✓ resolved: ", _CC_DIM), (item.chosen, f"bold {_CC_DONE}"))
         return Presentation(height=2, renderable=Group(head, resolved))
 
 
-class ReynGutter(StateDecorator):
-    """Reuse the library's EntryState -> marker mapping (RUNNING/SUCCESS/
-    ERROR/...), which mirrors reyn's present-layer / audit-event phases."""
+class ReynGutter:
+    """Claude-Code-style gutter: a single colored ● per :class:`EntryState`.
+
+    Implements the library's :class:`FlowDecorator` protocol directly
+    (``decorate(entry, width, height) -> RenderableType``) rather than
+    reusing ``StateDecorator``'s glyph set, because reyn's own renderer uses
+    one uniform ● dot colored by state — not a different glyph per state.
+    The user row's continuous background (gutter + body) is now handled by
+    FlowView via ``Presentation.background`` — the gutter no longer paints its
+    own background to match.
+    """
+
+    _STATE_COLOR: dict[EntryState, str] = {
+        EntryState.DEFAULT: _CC_DIM,
+        EntryState.RUNNING: _CC_WARN,
+        EntryState.SUCCESS: _CC_DONE,
+        EntryState.ERROR: _CC_ERR,
+        EntryState.CANCELLED: _CC_DIM,
+    }
+
+    def decorate(self, entry: Entry[ConvItem], width: int, height: int) -> RenderableType:
+        color = self._STATE_COLOR.get(entry.state, _CC_DIM)
+        return Text("●".ljust(width), style=color)
 
 
 # --------------------------------------------------------------------------
@@ -211,6 +240,66 @@ class StatusLine(Static):
     top-of-screen status (session id / model / turn count)."""
 
 
+class Composer(TextArea):
+    """Multi-line, Claude-Code-style input composer.
+
+    ``TextArea`` normally inserts a newline on plain ``enter`` (see
+    ``TextArea._on_key`` in textual's own source, which maps the ``enter``
+    key to an inline ``"\\n"`` insert). This PoC wants the opposite —
+    chat-composer convention: **Enter submits**, **Shift+Enter inserts a
+    newline** — so ``_on_key`` is overridden to intercept both keys before
+    they reach the base implementation, and every other key (printable
+    chars, backspace, arrows, tab, …) falls through to
+    ``TextArea._on_key``/normal bindings unchanged.
+
+    Auto-grows in height as the wrapped line count increases, capped at
+    ``MAX_ROWS`` — past that the TextArea's own internal viewport scrolls,
+    same as any bounded chat composer.
+    """
+
+    MAX_ROWS = 6
+
+    class Submitted(Message):
+        """Posted when the user presses Enter with non-empty content."""
+
+        def __init__(self, value: str) -> None:
+            self.value = value
+            super().__init__()
+
+    def on_mount(self) -> None:
+        self.show_line_numbers = False
+        self._sync_height()
+
+    async def _on_key(self, event: events.Key) -> None:
+        if event.key == "enter":
+            event.stop()
+            event.prevent_default()
+            text = self.text
+            if text.strip():
+                self.post_message(self.Submitted(text))
+            return
+        if event.key == "shift+enter":
+            event.stop()
+            event.prevent_default()
+            start, end = self.selection
+            self._replace_via_keyboard("\n", start, end)
+            return
+        await super()._on_key(event)
+
+    def on_text_area_changed(self, event: TextArea.Changed) -> None:
+        self._sync_height()
+
+    def _sync_height(self) -> None:
+        # +2 for the top/bottom border rows; clamp to [1, MAX_ROWS] wrapped
+        # content rows so the composer auto-grows then internally scrolls.
+        wrapped_rows = max(self.wrapped_document.height, 1)
+        self.styles.height = min(wrapped_rows, self.MAX_ROWS) + 2
+
+    def clear_and_reset(self) -> None:
+        self.text = ""
+        self._sync_height()
+
+
 class ReynChatPoc(App):
     TITLE = "reyn · textual-flowview PoC"
     CSS = """
@@ -224,10 +313,15 @@ class ReynChatPoc(App):
     }
     FlowView {
         height: 1fr;
-        border: round $panel;
+        scrollbar-size-vertical: 0;
     }
     FlowView > .flowview--selected { background: $accent 25%; }
-    Input { dock: bottom; }
+    Composer {
+        dock: bottom;
+        height: 3;
+        max-height: 8;
+        border: round $panel;
+    }
     """
     BINDINGS = [("ctrl+d", "demo_stream", "Stream a reply")]
 
@@ -246,7 +340,7 @@ class ReynChatPoc(App):
             gutter_width=2,
             anchor=Anchor.STICKY_BOTTOM,
         )
-        yield Input(placeholder="Type a message and press Enter…")
+        yield Composer(placeholder="Type a message — Enter to send, Shift+Enter for a newline…")
 
     def on_mount(self) -> None:
         # Restore-on-restart: hydrate BEFORE any new interaction happens.
@@ -258,9 +352,9 @@ class ReynChatPoc(App):
         status = self.query_one(StatusLine)
         status.update(f"reyn-poc · session=demo · model=sonnet · turns={self._turns}")
 
-    async def on_input_submitted(self, event: Input.Submitted) -> None:
+    async def on_composer_submitted(self, event: Composer.Submitted) -> None:
         text = event.value.strip()
-        event.input.value = ""
+        self.query_one(Composer).clear_and_reset()
         if not text:
             return
         self.conversation.append(ConvItem(kind="message", role="user", text=text))
