@@ -12,8 +12,14 @@ efficiently — chat, timelines, git history, event logs, notifications, mail,
 AI agent transcripts. None of these are special-cased. The widget only ever
 deals with a **Model + Presenter**.
 
-> Status: **v0.3 (draft)** — core data layer implemented. The `FlowView`
-> widget itself is the next milestone.
+![Activity feed with a per-state gutter, streaming, and sticky-bottom](assets/showcase.svg)
+
+<table>
+<tr>
+<td><img alt="Collapsible groups with a sticky header" src="assets/groups.svg"></td>
+<td><img alt="Minimap replacing the scrollbar, errors visible at a glance" src="assets/minimap.svg"></td>
+</tr>
+</table>
 
 ## Core ideas
 
