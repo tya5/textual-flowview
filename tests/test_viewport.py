@@ -39,6 +39,21 @@ def test_total_height_uses_real_heights_when_present() -> None:
     assert vp.total_height == 50
 
 
+def test_width_change_keeps_last_known_heights_not_collapse() -> None:
+    # Regression: on resize the width-keyed cache misses, but the layout must
+    # fall back to each entry's last known height instead of collapsing every
+    # row to the estimate (which makes the view briefly implode).
+    _, entries, layout, vp = _make(10, height=10, width=80)
+    _present_all(entries, layout, 80, 5)  # each 5 rows at width 80
+    vp.invalidate_heights()
+    assert vp.total_height == 50
+
+    # Terminal resized: nothing presented at the new width yet.
+    vp.set_size(60, 10)
+    # Still ~50 (last-known 5 each), NOT 10 (estimate 1 each).
+    assert vp.total_height == 50
+
+
 def test_visible_range_basic() -> None:
     _, entries, layout, vp = _make(100, height=10)
     _present_all(entries, layout, 80, 5)  # each 5 rows

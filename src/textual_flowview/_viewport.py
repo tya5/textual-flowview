@@ -129,8 +129,14 @@ class Viewport(Generic[T]):
         return max(0, self.total_height - self._height)
 
     def _height_of(self, entry: Entry[T]) -> int:
-        h = self._layout.height(entry, self._width) if self._width > 0 else None
-        return h if h is not None else self._estimated_height
+        if self._width > 0:
+            h = self._layout.height(entry, self._width)
+            if h is not None:
+                return h
+        # Fall back to the last height seen at any width (keeps the layout
+        # stable across a resize) before dropping to the estimate.
+        last = self._layout.last_known_height(entry.id)
+        return last if last is not None else self._estimated_height
 
     def _prefix(self) -> list[int]:
         if self._offsets is None:

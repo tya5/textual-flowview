@@ -35,6 +35,11 @@ class FlowLayout(Generic[T]):
 
     def __init__(self) -> None:
         self._cache: dict[_Key, Presentation] = {}
+        # Last height seen for an entry at *any* width/revision. Survives a
+        # width change (unlike the width-keyed cache) so the layout can keep an
+        # entry near its real size while it re-presents after a resize, instead
+        # of momentarily collapsing to the estimate.
+        self._last_height: dict[int, int] = {}
 
     def get(self, entry: Entry[T], width: int) -> Presentation | None:
         """Return the cached presentation for ``entry`` at ``width`` for its
@@ -46,6 +51,12 @@ class FlowLayout(Generic[T]):
         presented at that width/revision."""
         presentation = self.get(entry, width)
         return presentation.height if presentation is not None else None
+
+    def last_known_height(self, entry_id: int) -> int | None:
+        """The most recent height seen for this entry at any width, or
+        ``None`` if it has never been presented. Used as a resize-friendly
+        estimate so the layout doesn't collapse before re-presenting."""
+        return self._last_height.get(entry_id)
 
     def store(
         self,
@@ -71,12 +82,14 @@ class FlowLayout(Generic[T]):
         for key in stale:
             del self._cache[key]
         self._cache[(entry_id, width, revision)] = presentation
+        self._last_height[entry_id] = presentation.height
 
     def discard(self, entry_id: int) -> None:
         """Drop every cached presentation for an entry (call on removal)."""
         stale = [key for key in self._cache if key[0] == entry_id]
         for key in stale:
             del self._cache[key]
+        self._last_height.pop(entry_id, None)
 
     def retain_width(self, width: int) -> None:
         """Drop presentations produced for any width other than ``width``.
@@ -91,6 +104,7 @@ class FlowLayout(Generic[T]):
     def clear(self) -> None:
         """Empty the entire cache."""
         self._cache.clear()
+        self._last_height.clear()
 
     def __len__(self) -> int:
         return len(self._cache)
