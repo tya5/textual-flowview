@@ -314,6 +314,25 @@ FlowView caches an entry's render, so animation needs a clock:
 See `examples/progress.py` — the gutter spinner is FlowView-driven
 (`animation_fps`); each task's progress is a viewport-gated `animate_entry`.
 
+### Viewport-scoped resources (the general hook)
+
+`animate_entry` is a convenience over the general primitive: **tie any
+resource's lifecycle to whether an entry is on screen**. `track_visibility`
+runs `on_show` when the entry enters the viewport and `on_hide` when it leaves —
+and also on stop / removal, so a resource is always released:
+
+```python
+view.track_visibility(
+    entry,
+    on_show=lambda e: e.item.stream.subscribe(),    # acquire when visible
+    on_hide=lambda e: e.item.stream.unsubscribe(),  # release when hidden
+)
+```
+
+Use it for anything scoped to visibility — a data subscription, a video, a
+lazily-loaded image, a timer. Returns a `VisibilityHandle`; `.stop()`
+unregisters (releasing if currently shown).
+
 > Interactive Textual **widgets** (`Button`, `Select`, `Input`) are a different
 > thing — FlowView paints renderables rather than mounting child widgets, so
 > those aren't hosted per entry. For clickable controls, draw them and hit-test

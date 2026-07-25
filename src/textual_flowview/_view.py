@@ -25,13 +25,46 @@ from ._presenter import FlowPresenter
 from ._state import EntryState
 from ._viewport import AnchorState, Viewport
 
-__all__ = ["AnimationHandle", "FlowView"]
+__all__ = ["AnimationHandle", "FlowView", "VisibilityHandle"]
 
 T = TypeVar("T")
 
 
+class _VisibilityObserver(Generic[T]):
+    """A user resource whose lifecycle is tied to an entry's viewport state."""
+
+    __slots__ = ("entry", "on_hide", "on_show", "shown")
+
+    def __init__(
+        self,
+        entry: Entry[T],
+        on_show: Callable[[Entry[T]], None] | None,
+        on_hide: Callable[[Entry[T]], None] | None,
+    ) -> None:
+        self.entry = entry
+        self.on_show = on_show
+        self.on_hide = on_hide
+        self.shown = False
+
+
+class VisibilityHandle:
+    """Stops a visibility tracker started with :meth:`FlowView.track_visibility`.
+
+    Stopping while the entry is on screen runs ``on_hide`` once, so a resource is
+    always released."""
+
+    __slots__ = ("_observer", "_view")
+
+    def __init__(self, view: FlowView[Any], observer: _VisibilityObserver[Any]) -> None:
+        self._view = view
+        self._observer = observer
+
+    def stop(self) -> None:
+        self._view._remove_observer(self._observer)
+
+
 class AnimationHandle:
-    """Cancels an entry animation started with :meth:`FlowView.animate`."""
+    """Cancels an entry animation started with :meth:`FlowView.animate_entry`."""
 
     __slots__ = ("_entry_id", "_view")
 
@@ -176,10 +209,14 @@ class FlowView(ScrollView, Generic[T]):
         self._follow_top = anchor is Anchor.STICKY_TOP
         # Single-selection state, owned by the view (not the entry).
         self._selected: Entry[T] | None = None
-        # Per-entry animations: id -> (entry, callback, Timer). The timer runs
-        # only while the entry is on screen (paused when it scrolls out).
-        self._animations: dict[int, tuple[Entry[T], Callable[[Entry[T]], None], Timer]] = {}
-        # Ids of entries currently in the visible range (for animation gating).
+        # Per-entry visibility observers: acquire/release a user resource as the
+        # entry enters/leaves the viewport (the general lifecycle hook).
+        self._observers: dict[int, list[_VisibilityObserver[T]]] = {}
+        # Per-entry animations (a timer resource built on top of _observers).
+        self._animations: dict[
+            int, tuple[Entry[T], Callable[[Entry[T]], None], Timer, VisibilityHandle]
+        ] = {}
+        # Ids of entries currently in the visible range (for lifecycle gating).
         self._visible_ids: set[int] = set()
         # Ids of entries in the present band (visible + overscan + read-ahead).
         # An update() to an entry outside this band is deferred until it scrolls
@@ -255,6 +292,8 @@ class FlowView(ScrollView, Generic[T]):
         if self._selected is entry:
             self.select(None)
         self._stop_animation(entry.id)
+        self._drop_observers(entry.id)
+        self._visible_ids.discard(entry.id)
         state = self._capture()
         self._layout.discard(entry.id)
         self._strip_cache.pop(entry.id, None)
@@ -277,6 +316,8 @@ class FlowView(ScrollView, Generic[T]):
             self.select(None)
         for entry_id in list(self._animations):
             self._stop_animation(entry_id)
+        for entry_id in list(self._observers):
+            self._drop_observers(entry_id)
         self._visible_ids = set()
         self._layout.clear()
         self._strip_cache.clear()
@@ -348,7 +389,57 @@ class FlowView(ScrollView, Generic[T]):
         """Clear the current selection (if any)."""
         self.select(None)
 
-    # -- per-entry animation (viewport-gated) ------------------------------
+    # -- viewport-scoped resource lifecycle --------------------------------
+
+    def track_visibility(
+        self,
+        entry: Entry[T],
+        *,
+        on_show: Callable[[Entry[T]], None] | None = None,
+        on_hide: Callable[[Entry[T]], None] | None = None,
+    ) -> VisibilityHandle:
+        """Tie a resource's lifecycle to whether ``entry`` is on screen.
+
+        ``on_show(entry)`` runs when the entry enters the viewport (and
+        immediately if it is already visible); ``on_hide(entry)`` runs when it
+        leaves — and also when tracking stops or the entry is removed, so a
+        resource is always released. Use it to acquire/release anything scoped
+        to visibility: a subscription, a video, a lazy-loaded image, a timer.
+
+            view.track_visibility(
+                entry,
+                on_show=lambda e: e.item.stream.subscribe(),
+                on_hide=lambda e: e.item.stream.unsubscribe(),
+            )
+
+        Returns a :class:`VisibilityHandle`; call ``.stop()`` to unregister.
+        """
+        observer: _VisibilityObserver[T] = _VisibilityObserver(entry, on_show, on_hide)
+        self._observers.setdefault(entry.id, []).append(observer)
+        self._visible_ids = self._current_visible_ids()
+        if entry.id in self._visible_ids:
+            observer.shown = True
+            if on_show is not None:
+                on_show(entry)
+        return VisibilityHandle(self, observer)
+
+    def _remove_observer(self, observer: _VisibilityObserver[Any]) -> None:
+        observers = self._observers.get(observer.entry.id)
+        if observers is None or observer not in observers:
+            return
+        observers.remove(observer)
+        if not observers:
+            del self._observers[observer.entry.id]
+        if observer.shown and observer.on_hide is not None:
+            observer.shown = False
+            observer.on_hide(observer.entry)
+
+    def _drop_observers(self, entry_id: int) -> None:
+        for observer in self._observers.pop(entry_id, []):
+            if observer.shown and observer.on_hide is not None:
+                observer.on_hide(observer.entry)
+
+    # -- per-entry animation (a timer built on track_visibility) -----------
 
     def animate_entry(
         self,
@@ -357,12 +448,8 @@ class FlowView(ScrollView, Generic[T]):
         callback: Callable[[Entry[T]], None],
     ) -> AnimationHandle:
         """Run ``callback(entry)`` every ``interval`` seconds — but **only while
-        the entry is on screen**.
-
-        FlowView pauses the timer when the entry scrolls out of the viewport and
-        resumes it when it scrolls back, so off-screen entries do no work (no
-        wasted ``update()`` / re-present). Typical use is animating a body
-        indicator::
+        the entry is on screen**. A convenience over :meth:`track_visibility`
+        that manages a paused/resumed timer for you.
 
             def tick(e):
                 e.item.progress = min(1.0, e.item.progress + 0.05)
@@ -372,15 +459,15 @@ class FlowView(ScrollView, Generic[T]):
 
             view.animate_entry(entry, 0.1, tick)
 
-        Registering again for the same entry replaces the previous animation.
-        The animation is dropped automatically when the entry is removed.
+        Registering again for the same entry replaces the previous animation;
+        it is dropped automatically when the entry is removed.
         """
         self._stop_animation(entry.id)
         timer = self.set_interval(interval, lambda: self._fire_animation(entry.id))
-        self._animations[entry.id] = (entry, callback, timer)
-        self._visible_ids = self._current_visible_ids()
-        if entry.id not in self._visible_ids:
-            timer.pause()
+        timer.pause()
+        handle = self.track_visibility(entry, on_show=lambda _: timer.resume(),
+                                       on_hide=lambda _: timer.pause())
+        self._animations[entry.id] = (entry, callback, timer, handle)
         return AnimationHandle(self, entry.id)
 
     def stop_entry_animation(self, entry: Entry[T]) -> None:
@@ -390,13 +477,14 @@ class FlowView(ScrollView, Generic[T]):
     def _stop_animation(self, entry_id: int) -> None:
         record = self._animations.pop(entry_id, None)
         if record is not None:
-            record[2].stop()
+            record[2].stop()   # the timer
+            record[3].stop()   # the visibility tracker
 
     def _fire_animation(self, entry_id: int) -> None:
         record = self._animations.get(entry_id)
         if record is None:
             return
-        entry, callback, _ = record
+        entry, callback, _timer, _handle = record
         if not entry.alive:
             self._stop_animation(entry_id)
             return
@@ -812,20 +900,24 @@ class FlowView(ScrollView, Generic[T]):
         self._sync_scroll()
         return {entry.id for entry in self._viewport.visible_range().entries}
 
-    def _sync_animation_visibility(self) -> None:
-        """Pause animations whose entry just scrolled out; resume those that
-        scrolled back in. Cheap no-op when nothing is animated."""
-        if not self._animations:
+    def _sync_visibility(self) -> None:
+        """Fire on_show / on_hide for entries that just entered or left the
+        viewport. Cheap no-op when nothing is tracked."""
+        if not self._observers:
             return
         current = self._current_visible_ids()
         for entry_id in current - self._visible_ids:
-            record = self._animations.get(entry_id)
-            if record is not None:
-                record[2].resume()
+            for observer in self._observers.get(entry_id, ()):
+                if not observer.shown:
+                    observer.shown = True
+                    if observer.on_show is not None:
+                        observer.on_show(observer.entry)
         for entry_id in self._visible_ids - current:
-            record = self._animations.get(entry_id)
-            if record is not None:
-                record[2].pause()
+            for observer in self._observers.get(entry_id, ()):
+                if observer.shown:
+                    observer.shown = False
+                    if observer.on_hide is not None:
+                        observer.on_hide(observer.entry)
         self._visible_ids = current
 
     def _capture(self) -> AnchorState[T]:
@@ -845,7 +937,7 @@ class FlowView(ScrollView, Generic[T]):
             self._viewport.restore_anchor(anchor_state)
             self.scroll_to(y=self._viewport.scroll_y, animate=False)
         self.refresh()
-        self._sync_animation_visibility()
+        self._sync_visibility()
 
     def _present_visible(self) -> None:
         """Kick off presentation for the visible range plus the overscan band,
@@ -869,4 +961,4 @@ class FlowView(ScrollView, Generic[T]):
         self._band_ids = {entry.id for entry in band}
         for entry in band:
             self._present_entry(entry)
-        self._sync_animation_visibility()
+        self._sync_visibility()

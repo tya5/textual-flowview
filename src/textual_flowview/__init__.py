@@ -23,7 +23,7 @@ from ._model import FlowModel
 from ._presentation import Presentation
 from ._presenter import FlowPresenter
 from ._state import EntryState
-from ._view import AnimationHandle, FlowView
+from ._view import AnimationHandle, FlowView, VisibilityHandle
 
 __all__ = [
     "Anchor",
@@ -37,6 +37,7 @@ __all__ = [
     "FlowView",
     "Presentation",
     "StateDecorator",
+    "VisibilityHandle",
 ]
 
 __version__ = "0.3.0.dev0"

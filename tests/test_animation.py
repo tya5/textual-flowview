@@ -178,3 +178,81 @@ async def test_removing_entry_drops_its_animation() -> None:
         row.remove()
         await pilot.pause()
         assert row.id not in view._animations
+
+
+# -- general viewport-scoped resource lifecycle (track_visibility) ---------
+
+
+class Res:
+    def __init__(self) -> None:
+        self.log: list[str] = []
+
+
+class ResPresenter:
+    async def present(self, item, width) -> Presentation:
+        return Presentation(height=1, renderable=Text("."))
+
+
+def _res_app(model):
+    class A(App):
+        def compose(self) -> ComposeResult:
+            yield FlowView(model=model, presenter=ResPresenter(), spacing=0)
+
+    return A()
+
+
+@pytest.mark.asyncio
+async def test_track_visibility_acquire_release_on_scroll() -> None:
+    model: FlowModel[Res] = FlowModel()
+    rows = [model.append(Res()) for _ in range(100)]
+    app = _res_app(model)
+    async with app.run_test(size=(40, 10)) as pilot:
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        r = rows[0]
+        view.track_visibility(
+            r,
+            on_show=lambda e: e.item.log.append("show"),
+            on_hide=lambda e: e.item.log.append("hide"),
+        )
+        assert r.item.log == ["show"]                 # visible at registration
+        view.scroll_to(y=50, animate=False)
+        await pilot.pause()
+        assert r.item.log == ["show", "hide"]          # scrolled away
+        view.scroll_to(y=0, animate=False)
+        await pilot.pause()
+        assert r.item.log == ["show", "hide", "show"]  # scrolled back
+
+
+@pytest.mark.asyncio
+async def test_track_visibility_handle_stop_releases() -> None:
+    model: FlowModel[Res] = FlowModel()
+    r = model.append(Res())
+    app = _res_app(model)
+    async with app.run_test(size=(40, 10)) as pilot:
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        handle = view.track_visibility(
+            r, on_show=lambda e: e.item.log.append("show"),
+            on_hide=lambda e: e.item.log.append("hide"),
+        )
+        handle.stop()  # stopping while visible releases
+        assert r.item.log == ["show", "hide"]
+
+
+@pytest.mark.asyncio
+async def test_track_visibility_release_on_remove() -> None:
+    model: FlowModel[Res] = FlowModel()
+    r = model.append(Res())
+    app = _res_app(model)
+    async with app.run_test(size=(40, 10)) as pilot:
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        view.track_visibility(
+            r, on_show=lambda e: e.item.log.append("show"),
+            on_hide=lambda e: e.item.log.append("hide"),
+        )
+        r.remove()
+        await pilot.pause()
+        assert r.item.log == ["show", "hide"]  # removal releases
+        assert r.id not in view._observers
