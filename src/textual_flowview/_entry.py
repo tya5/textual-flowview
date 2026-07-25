@@ -37,6 +37,7 @@ class Entry(Generic[T]):
     __slots__ = (
         "_alive",
         "_decor_revision",
+        "_hidden",
         "_id",
         "_item",
         "_metadata",
@@ -51,6 +52,7 @@ class Entry(Generic[T]):
         self._item = item
         self._revision = 0
         self._alive = True
+        self._hidden = False
         self._state: EntryState = EntryState.DEFAULT
         self._metadata: dict[str, Any] = {}
         # Bumped on state/metadata changes; drives gutter (not body) redraws.
@@ -90,6 +92,34 @@ class Entry(Generic[T]):
     def metadata(self) -> Mapping[str, Any]:
         """Read-only view of the decorator-facing metadata bag."""
         return MappingProxyType(self._metadata)
+
+    @property
+    def hidden(self) -> bool:
+        """Whether this entry is currently excluded from the view.
+
+        Hidden entries stay in the model and keep their cached presentation
+        (so showing them again is instant), but contribute no height and are
+        not drawn. This is the primitive group-collapse is built on: collapse
+        a header by hiding its child entries.
+        """
+        return self._hidden
+
+    def hide(self) -> None:
+        """Exclude this entry from the view. A no-op if already hidden."""
+        self.set_hidden(True)
+
+    def show(self) -> None:
+        """Re-include this entry in the view. A no-op if already visible."""
+        self.set_hidden(False)
+
+    def set_hidden(self, hidden: bool) -> None:
+        """Set visibility. Does not bump the revision or re-present the body;
+        only the set of visible entries and the layout change. No-op on a
+        removed entry or when unchanged."""
+        if not self._alive or hidden == self._hidden:
+            return
+        self._hidden = hidden
+        self._model._on_entry_visibility(self)
 
     def set_state(self, state: EntryState) -> None:
         """Set the lifecycle state and redraw the gutter only.

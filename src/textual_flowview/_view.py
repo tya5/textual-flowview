@@ -118,7 +118,7 @@ class FlowView(ScrollView, Generic[T]):
     def on_mount(self) -> None:
         self._model._attach(self)
         self._sync_geometry()
-        self._viewport.set_entries(list(self._model))
+        self._viewport.set_entries(self._visible_entries())
         self._refresh_layout(None)
         self._present_visible()
 
@@ -145,7 +145,7 @@ class FlowView(ScrollView, Generic[T]):
 
     def on_flow_insert(self, entry: Entry[T], index: int) -> None:
         state = self._capture()
-        self._viewport.set_entries(list(self._model))
+        self._viewport.set_entries(self._visible_entries())
         self._refresh_layout(state)
 
     def on_flow_update(self, entry: Entry[T]) -> None:
@@ -162,8 +162,19 @@ class FlowView(ScrollView, Generic[T]):
         state = self._capture()
         self._layout.discard(entry.id)
         self._strip_cache.pop(entry.id, None)
-        self._viewport.set_entries(list(self._model))
+        self._viewport.set_entries(self._visible_entries())
         self._refresh_layout(state)
+
+    def on_flow_visibility(self, entry: Entry[T]) -> None:
+        # Which entries are visible changed (a group collapsed/expanded). Rebuild
+        # the viewport's entry list and reflow — but keep every cached
+        # presentation, so hiding/showing is instant and never re-presents.
+        if entry.hidden and self._selected is entry:
+            self.select(None)
+        state = self._capture()
+        self._viewport.set_entries(self._visible_entries())
+        self._refresh_layout(state)
+        self._present_visible()
 
     def on_flow_clear(self) -> None:
         if self._selected is not None:
@@ -381,6 +392,11 @@ class FlowView(ScrollView, Generic[T]):
         return Presentation(height=3, renderable=panel)
 
     # -- geometry helpers --------------------------------------------------
+
+    def _visible_entries(self) -> list[Entry[T]]:
+        """Model order with hidden entries filtered out — the set the viewport
+        actually lays out and draws."""
+        return [entry for entry in self._model if not entry.hidden]
 
     def _content_width(self) -> int:
         region = self.scrollable_content_region

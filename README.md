@@ -92,6 +92,47 @@ class MyDecorator:
 A presenter exception both renders an error body and flips the entry to
 `EntryState.ERROR` (so the gutter shows it) without crashing the app.
 
+## Collapse & group collapse
+
+Two kinds of collapse fall out of the design:
+
+**Per-item collapse** is purely a presenter concern — no library feature
+needed. Keep a `collapsed` flag on your item; present a compact renderable when
+set; call `entry.update()` to reflow:
+
+```python
+async def present(self, item, width):
+    if item.collapsed:
+        return Presentation(height=1, renderable=Text(f"▸ {item.title}"))
+    return Presentation(height=full, renderable=Panel(...))   # ▾ expanded
+```
+
+**Group collapse** uses the library's entry-visibility primitive. Hidden
+entries stay in the model and keep their cached presentation (showing them
+again is instant and never re-presents), but contribute no height and aren't
+drawn:
+
+```python
+entry.hidden          # bool
+entry.hide()          # exclude from the view
+entry.show()          # re-include
+entry.set_hidden(True)
+```
+
+A collapsible header is then just hiding a run of child entries — see
+`examples/groups.py`:
+
+```python
+def collapse_group(header, children):
+    header.item.collapsed = True
+    header.update()                 # redraw the ▸ chevron
+    for child in children:
+        child.hide()                # the group-collapse primitive
+```
+
+Which entries belong to a group is up to you — grouping policy varies by app,
+so the library ships the visibility primitive rather than a fixed hierarchy.
+
 ## Scroll anchoring
 
 ```python
@@ -140,6 +181,7 @@ FlowView > .flowview--selected { background: $accent 30%; }
 
 ```bash
 PYTHONPATH=src python examples/showcase.py   # live AI-agent activity feed
+PYTHONPATH=src python examples/groups.py      # collapsible grouped pipeline
 PYTHONPATH=src python examples/chat.py        # streaming chat
 ```
 

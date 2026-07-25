@@ -21,6 +21,7 @@ class ModelListener(Protocol[T]):
     def on_flow_remove(self, entry: Entry[T], index: int) -> None: ...
     def on_flow_clear(self) -> None: ...
     def on_flow_decorate(self, entry: Entry[T]) -> None: ...
+    def on_flow_visibility(self, entry: Entry[T]) -> None: ...
 
 
 class FlowModel(Generic[T]):
@@ -78,6 +79,10 @@ class FlowModel(Generic[T]):
     def _on_entry_decorated(self, entry: Entry[T]) -> None:
         if self._listener is not None:
             self._listener.on_flow_decorate(entry)
+
+    def _on_entry_visibility(self, entry: Entry[T]) -> None:
+        if self._listener is not None:
+            self._listener.on_flow_visibility(entry)
 
     def _on_entry_removed(self, entry: Entry[T]) -> None:
         try:
