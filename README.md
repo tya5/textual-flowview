@@ -133,6 +133,23 @@ def collapse_group(header, children):
 Which entries belong to a group is up to you — grouping policy varies by app,
 so the library ships the visibility primitive rather than a fixed hierarchy.
 
+## Sticky headers
+
+Pin the current group's header to the top while scrolling through it. Tell
+FlowView which entries are headers with a predicate; the pinned header swaps as
+you cross group boundaries, and the next header pushes the previous one up:
+
+```python
+FlowView(
+    model=model,
+    presenter=presenter,
+    sticky_header=lambda e: e.item.kind == "header",
+)
+```
+
+Style the pinned rows via the `flowview--sticky-header` component class. See
+`examples/groups.py`.
+
 ## Scroll anchoring
 
 ```python

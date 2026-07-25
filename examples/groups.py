@@ -126,14 +126,20 @@ class GroupsApp(App):
             presenter=PipelinePresenter(),
             decorator=PipelineGutter(),
             gutter_width=2,
+            sticky_header=lambda e: e.item.kind == "header",
         )
         yield Footer()
 
     def on_mount(self) -> None:
         for title, steps in GROUPS:
-            header = self.pipeline.append(Node("header", title, count=len(steps)))
+            # Pad each group with filler steps so the flow scrolls and the
+            # sticky header is worth watching.
+            padded = list(steps) + [
+                (f"check {i}", "ok", EntryState.SUCCESS) for i in range(1, 7)
+            ]
+            header = self.pipeline.append(Node("header", title, count=len(padded)))
             kids: list[Entry[Node]] = []
-            for label, detail, state in steps:
+            for label, detail, state in padded:
                 child = self.pipeline.append(Node("step", label, detail))
                 child.set_state(state)
                 kids.append(child)

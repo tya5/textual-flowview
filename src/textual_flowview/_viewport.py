@@ -128,6 +128,11 @@ class Viewport(Generic[T]):
     def max_scroll(self) -> int:
         return max(0, self.total_height - self._height)
 
+    def height_of(self, entry: Entry[T]) -> int:
+        """The height the layout will use for ``entry`` (cached, last-known, or
+        the estimate) — the same value that drives the offsets."""
+        return self._height_of(entry)
+
     def _height_of(self, entry: Entry[T]) -> int:
         if self._width > 0:
             h = self._layout.height(entry, self._width)
@@ -182,6 +187,13 @@ class Viewport(Generic[T]):
         while stop < n and prefix[stop] < bottom:
             stop += 1
         return self._entries[start:stop]
+
+    def offset_at(self, index: int) -> int:
+        """Virtual y-offset of the entry at ``index`` (O(1) via the prefix)."""
+        prefix = self._prefix()
+        if index < 0 or index >= len(prefix):
+            return 0
+        return prefix[index]
 
     def offset_of(self, entry: Entry[T]) -> int | None:
         """Virtual y-offset of ``entry``'s top edge, or ``None`` if unknown."""

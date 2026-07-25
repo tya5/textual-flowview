@@ -43,16 +43,23 @@ class FlowView(ScrollView, Generic[T]):
 
     can_focus = True
 
-    COMPONENT_CLASSES: ClassVar[set[str]] = {"flowview--selected"}
+    COMPONENT_CLASSES: ClassVar[set[str]] = {
+        "flowview--selected",
+        "flowview--sticky-header",
+    }
     """
     | Class | Applied to |
     | :- | :- |
     | ``flowview--selected`` | The currently selected entry's rows. |
+    | ``flowview--sticky-header`` | The pinned sticky header's rows. |
     """
 
     DEFAULT_CSS = """
     FlowView > .flowview--selected {
         background: $accent 30%;
+    }
+    FlowView > .flowview--sticky-header {
+        background: $panel;
     }
     """
 
@@ -79,6 +86,7 @@ class FlowView(ScrollView, Generic[T]):
         presenter: FlowPresenter[T],
         decorator: FlowDecorator[T] | None = None,
         gutter_width: int | None = None,
+        sticky_header: Callable[[Entry[T]], bool] | None = None,
         anchor: Anchor = Anchor.CURRENT,
         estimated_height: int = 1,
         overscan: int = 4,
@@ -92,11 +100,15 @@ class FlowView(ScrollView, Generic[T]):
         self._model = model
         self._presenter = presenter
         self._decorator = decorator
+        # Predicate marking an entry as a group header to pin while scrolling.
+        self._is_sticky_header = sticky_header
         # Rows to pre-present *ahead of the scroll direction*, beyond the static
         # overscan band. None -> one viewport height. 0 disables read-ahead.
         self._read_ahead = read_ahead
         # Direction of the last scroll: -1 up, +1 down, 0 none.
         self._scroll_dir = 0
+        # Per-frame memo of the sticky-header computation, keyed by scroll_y.
+        self._sticky_cache: tuple[int, tuple[Entry[T], int, int] | None] | None = None
         # No decorator -> no gutter. Decorator but unset width -> a sensible 2.
         if gutter_width is None:
             gutter_width = 2 if decorator is not None else 0
@@ -332,13 +344,24 @@ class FlowView(ScrollView, Generic[T]):
         if content_width <= 0:
             return Strip.blank(self.size.width)
         _, scroll_y = self.scroll_offset
+
+        # Sticky header: overlay the pinned group header on the top rows.
+        sticky = self._sticky_state(int(scroll_y))
+        if sticky is not None:
+            header, header_h, push = sticky
+            if 0 <= y < header_h - push:
+                return self._compose_line(header, y + push, content_width, sticky=True)
+
         virtual_y = y + scroll_y
         located = self._viewport.locate(virtual_y)
         if located is None:
             return Strip.blank(content_width)
         index, local_y = located
-        entry = self._viewport.entries[index]
+        return self._compose_line(self._viewport.entries[index], local_y, content_width)
 
+    def _compose_line(
+        self, entry: Entry[T], local_y: int, content_width: int, *, sticky: bool = False
+    ) -> Strip:
         gutter_w = self._gutter_width
         body_w = max(1, content_width - gutter_w)
         body_strips = self._entry_strips(entry, body_w)
@@ -358,9 +381,53 @@ class FlowView(ScrollView, Generic[T]):
         else:
             line = body_line
 
+        if sticky:
+            line = line.apply_style(self.get_component_rich_style("flowview--sticky-header"))
         if self._selected is entry:
             line = line.apply_style(self.get_component_rich_style("flowview--selected"))
         return line
+
+    def _sticky_state(self, scroll_y: int) -> tuple[Entry[T], int, int] | None:
+        """The pinned header for the current scroll position: ``(header,
+        header_height, push)``. ``push`` is how many rows the next header has
+        shoved it up (0 normally). ``None`` when there's nothing to pin.
+
+        Memoized per scroll position — render_line calls this for every visible
+        row, but the answer only changes when scroll_y or the layout does."""
+        if self._is_sticky_header is None:
+            return None
+        if self._sticky_cache is not None and self._sticky_cache[0] == scroll_y:
+            return self._sticky_cache[1]
+        result = self._compute_sticky(scroll_y)
+        self._sticky_cache = (scroll_y, result)
+        return result
+
+    def _compute_sticky(self, scroll_y: int) -> tuple[Entry[T], int, int] | None:
+        assert self._is_sticky_header is not None
+        entries = self._viewport.entries
+        located = self._viewport.locate(scroll_y)
+        if located is None:
+            return None
+        top_index = located[0]
+
+        active = None
+        for i in range(top_index, -1, -1):
+            if self._is_sticky_header(entries[i]):
+                active = i
+                break
+        if active is None:
+            return None
+
+        header = entries[active]
+        header_h = self._viewport.height_of(header)
+
+        # Push: if the next header is within header_h of the top, slide up.
+        push = 0
+        for j in range(active + 1, len(entries)):
+            if self._is_sticky_header(entries[j]):
+                push = max(0, header_h - (self._viewport.offset_at(j) - scroll_y))
+                break
+        return header, header_h, min(push, header_h)
 
     def _entry_strips(self, entry: Entry[T], width: int) -> list[Strip]:
         presentation = self._layout.get(entry, width)
@@ -501,6 +568,7 @@ class FlowView(ScrollView, Generic[T]):
 
     def _refresh_layout(self, anchor_state: AnchorState[T] | None) -> None:
         self._viewport.invalidate_heights()
+        self._sticky_cache = None
         self.virtual_size = Size(self._content_width(), self._viewport.total_height)
         if self._viewport.anchor is Anchor.STICKY_BOTTOM and self._follow_bottom:
             self.scroll_to(y=self.max_scroll_y, animate=False)
