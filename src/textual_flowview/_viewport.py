@@ -6,12 +6,12 @@ from ._anchor import Anchor
 from ._entry import Entry
 from ._layout import FlowLayout
 
-__all__ = ["Viewport", "VisibleRange"]
+__all__ = ["Viewport", "VisibleRange", "AnchorState"]
 
 T = TypeVar("T")
 
 
-class VisibleRange:
+class VisibleRange(Generic[T]):
     """The slice of entries the view should draw, plus paint geometry."""
 
     __slots__ = ("start", "stop", "entries", "first_offset")
@@ -164,7 +164,7 @@ class Viewport(Generic[T]):
 
     # -- visible range -----------------------------------------------------
 
-    def visible_range(self) -> VisibleRange:
+    def visible_range(self) -> VisibleRange[T]:
         """Compute the entries to draw for the current scroll position,
         padded by ``overscan`` rows above and below."""
         prefix = self._prefix()
@@ -221,15 +221,15 @@ class Viewport(Generic[T]):
 
     # -- anchoring ---------------------------------------------------------
 
-    def capture_anchor(self) -> _AnchorState[T]:
+    def capture_anchor(self) -> AnchorState[T]:
         """Snapshot enough state to preserve position across a reflow."""
         stick_bottom = self._anchor is Anchor.STICKY_BOTTOM and self.is_at_bottom()
         vr = self.visible_range()
         top_entry = vr.entries[0] if vr.entries else None
         delta = self._scroll_y - vr.first_offset if top_entry is not None else 0
-        return _AnchorState(stick_bottom, top_entry, delta)
+        return AnchorState(stick_bottom, top_entry, delta)
 
-    def restore_anchor(self, state: _AnchorState[T]) -> None:
+    def restore_anchor(self, state: AnchorState[T]) -> None:
         """Reposition after a reflow according to a captured anchor."""
         self._invalidate_offsets()
         if state.stick_bottom:
@@ -243,7 +243,7 @@ class Viewport(Generic[T]):
         self._clamp_scroll()
 
 
-class _AnchorState(Generic[T]):
+class AnchorState(Generic[T]):
     __slots__ = ("stick_bottom", "top_entry", "delta")
 
     def __init__(self, stick_bottom: bool, top_entry: Entry[T] | None, delta: int) -> None:

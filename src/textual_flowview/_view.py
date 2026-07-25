@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 from rich.console import RenderableType
 from rich.panel import Panel
@@ -19,7 +19,7 @@ from ._model import FlowModel
 from ._presentation import Presentation
 from ._presenter import FlowPresenter
 from ._state import EntryState
-from ._viewport import Viewport
+from ._viewport import AnchorState, Viewport
 
 __all__ = ["FlowView"]
 
@@ -62,13 +62,13 @@ class FlowView(ScrollView, Generic[T]):
         :class:`FlowView` that emitted it.
         """
 
-        def __init__(self, flow_view: "FlowView[T]", entry: "Entry[T] | None") -> None:
+        def __init__(self, flow_view: "FlowView[Any]", entry: "Entry[Any] | None") -> None:
             self.flow_view = flow_view
             self.entry = entry
             super().__init__()
 
         @property
-        def control(self) -> "FlowView[T]":
+        def control(self) -> "FlowView[Any]":
             return self.flow_view
 
     def __init__(
@@ -387,12 +387,12 @@ class FlowView(ScrollView, Generic[T]):
         _, scroll_y = self.scroll_offset
         self._viewport.scroll_to_offset(int(scroll_y))
 
-    def _capture(self):  # type: ignore[no-untyped-def]
+    def _capture(self) -> AnchorState[T]:
         self._sync_geometry()
         self._sync_scroll()
         return self._viewport.capture_anchor()
 
-    def _refresh_layout(self, anchor_state) -> None:  # type: ignore[no-untyped-def]
+    def _refresh_layout(self, anchor_state: AnchorState[T] | None) -> None:
         self._viewport.invalidate_heights()
         self.virtual_size = Size(self._content_width(), self._viewport.total_height)
         if self._viewport.anchor is Anchor.STICKY_BOTTOM and self._follow_bottom:

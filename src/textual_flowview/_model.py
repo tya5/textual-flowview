@@ -9,7 +9,7 @@ __all__ = ["FlowModel", "ModelListener"]
 T = TypeVar("T")
 
 
-class ModelListener(Protocol[T]):  # type: ignore[misc]
+class ModelListener(Protocol[T]):
     """Internal contract a :class:`FlowView` implements to observe a model.
 
     Not part of the public API. Callbacks are invoked synchronously on the

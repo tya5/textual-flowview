@@ -10,11 +10,12 @@ from ._state import EntryState
 
 __all__ = ["FlowDecorator", "StateDecorator"]
 
-T_contra = TypeVar("T_contra", contravariant=True)
+# Invariant: the protocol wraps the item in Entry[T], which is itself invariant.
+T = TypeVar("T")
 
 
 @runtime_checkable
-class FlowDecorator(Protocol[T_contra]):
+class FlowDecorator(Protocol[T]):
     """Produces the *gutter* renderable for an entry.
 
     The decorator is the counterpart of :class:`FlowPresenter`: the presenter
@@ -29,7 +30,7 @@ class FlowDecorator(Protocol[T_contra]):
     entry's body height in rows).
     """
 
-    def decorate(self, entry: Entry[T_contra], width: int, height: int) -> RenderableType: ...
+    def decorate(self, entry: Entry[T], width: int, height: int) -> RenderableType: ...
 
 
 class StateDecorator:

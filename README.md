@@ -1,5 +1,10 @@
 # textual-flowview
 
+[![CI](https://github.com/tya5/textual-flowview/actions/workflows/ci.yml/badge.svg)](https://github.com/tya5/textual-flowview/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
+[![Textual](https://img.shields.io/badge/built%20with-Textual-5a3fd6)](https://textual.textualize.io/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 *A virtualized Flow View widget for [Textual](https://textual.textualize.io/).*
 
 `textual-flowview` displays **large collections of variable-height items**
