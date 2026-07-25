@@ -123,5 +123,5 @@ def test_set_item_on_dead_entry_is_noop() -> None:
     assert e.item.text == "old"
 
 
-def test_anchor_has_two_members() -> None:
-    assert set(Anchor) == {Anchor.CURRENT, Anchor.STICKY_BOTTOM}
+def test_anchor_members() -> None:
+    assert set(Anchor) == {Anchor.CURRENT, Anchor.STICKY_BOTTOM, Anchor.STICKY_TOP}

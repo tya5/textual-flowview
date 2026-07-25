@@ -118,6 +118,43 @@ async def test_sticky_bottom_follows_new_items() -> None:
 
 
 @pytest.mark.asyncio
+async def test_sticky_top_follows_prepended_items() -> None:
+    model: FlowModel[Note] = FlowModel()
+    for i in range(40):
+        model.append(Note(text=f"n{i}"))
+    app = _app(model, NotePresenter(), anchor=Anchor.STICKY_TOP)
+    async with app.run_test(size=(40, 10)) as pilot:
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        assert view.scroll_offset.y == 0  # starts at the top
+        newest = model.insert(0, Note(text="newest"))  # prepend
+        await pilot.pause()
+        await pilot.pause()
+        # still pinned to the top, showing the newest item
+        assert view.scroll_offset.y == 0
+        assert view.entries[0] is newest
+
+
+@pytest.mark.asyncio
+async def test_sticky_top_does_not_yank_when_scrolled_down() -> None:
+    model: FlowModel[Note] = FlowModel()
+    for i in range(40):
+        model.append(Note(text=f"n{i}"))
+    app = _app(model, NotePresenter(), anchor=Anchor.STICKY_TOP)
+    async with app.run_test(size=(40, 10)) as pilot:
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        view.scroll_to(y=20, animate=False)  # user scrolled down to read history
+        await pilot.pause()
+        assert view.scroll_offset.y > 0
+        model.insert(0, Note(text="newest"))  # prepend above the fold
+        await pilot.pause()
+        await pilot.pause()
+        # not yanked back to the top
+        assert view.scroll_offset.y > 0
+
+
+@pytest.mark.asyncio
 async def test_clear_resets_scroll_and_layout() -> None:
     model: FlowModel[Note] = FlowModel()
     for i in range(30):

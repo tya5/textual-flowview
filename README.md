@@ -212,6 +212,12 @@ FlowView(model=..., presenter=..., anchor=Anchor.STICKY_BOTTOM)    # chat / log
 bottom** — scrolling up to read history stops the auto-follow (Slack / Discord
 / Claude Code behaviour).
 
+For a **newest-on-top** feed, prepend with `model.insert(0, item)` and use
+`Anchor.STICKY_TOP` — the mirror of `STICKY_BOTTOM`: it stays pinned to the top
+(showing the newest) while the user is at the top, and stops following once
+they scroll down. `CURRENT` also works for prepend, but keeps the current
+position instead of following the top.
+
 ## Smooth scrolling (overscan & read-ahead)
 
 FlowView only presents what's on (or near) screen. Two knobs control how much

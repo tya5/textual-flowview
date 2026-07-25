@@ -1,0 +1,82 @@
+{
+  "_comment": "Fixture mimicking a reyn session's persisted conversation state (roles, text, tool-call gutter states). In real reyn this would be reconstructed from P6 audit-events under .reyn/events (see docs/concepts/runtime/events.md) rather than hand-written, but the shape — role/kind + text + state — mirrors what an events-replay would hydrate into a FlowModel.",
+  "entries": [
+    {
+      "kind": "message",
+      "role": "user",
+      "text": "Can you find where the sandbox network gate lives and check if it denies async socketpair self-pipes?",
+      "state": "default"
+    },
+    {
+      "kind": "message",
+      "role": "assistant",
+      "text": "## Plan\n\nI'll grep the sandbox module for the seccomp network gate, then check the deny arms.\n\n- locate `network:false` gate\n- check `asyncio` `sendto`/`recvfrom` handling\n- confirm the `arg4 == 0` comparison for self-pipe traffic\n\n```python\nSCMP_CMP(arg=4, op=SCMP_CMP_EQ, datum=0)\n```\n",
+      "state": "default"
+    },
+    {
+      "kind": "tool_call",
+      "role": "assistant",
+      "tool": "grep",
+      "text": "pattern='network:false' path='src/reyn/security/sandbox/'",
+      "state": "success",
+      "result": "3 matches in 2 files"
+    },
+    {
+      "kind": "tool_call",
+      "role": "assistant",
+      "tool": "read_file",
+      "text": "src/reyn/security/sandbox/self_test.py",
+      "state": "success",
+      "result": "612 lines"
+    },
+    {
+      "kind": "tool_call",
+      "role": "assistant",
+      "tool": "sandboxed_exec",
+      "text": "pytest tests/test_sandbox_network_gate.py -q",
+      "state": "error",
+      "result": "FAILED test_async_socketpair_selfpipe_not_denied — AssertionError"
+    },
+    {
+      "kind": "message",
+      "role": "assistant",
+      "text": "Found it — the gate was collaterally denying `asyncio`'s internal self-pipe `sendto`/`recvfrom` calls (NULL address, arg4==0) even though `network:false` should only block real egress. Filed under #3060; fix adds an explicit `arg4==0` comparator so self-pipe traffic is exempted.\n\n**Root cause**: seccomp couldn't distinguish an MCP server's async self-pipe wakeup from real network egress without inspecting the syscall's 4th argument.",
+      "state": "success"
+    },
+    {
+      "kind": "ask_user",
+      "role": "assistant",
+      "text": "Should I add a negative witness test proving real egress is still denied, or is the existing deny-gate coverage sufficient?",
+      "options": ["Add negative witness", "Existing coverage is sufficient", "Let me look first"],
+      "chosen": null
+    },
+    {
+      "kind": "message",
+      "role": "user",
+      "text": "Add the negative witness — we need proof egress is still denied, not just that self-pipes are allowed.",
+      "state": "default"
+    },
+    {
+      "kind": "tool_call",
+      "role": "assistant",
+      "tool": "edit",
+      "text": "tests/test_sandbox_network_gate.py — add test_real_egress_still_denied",
+      "state": "success",
+      "result": "+18 -0 lines"
+    },
+    {
+      "kind": "tool_call",
+      "role": "assistant",
+      "tool": "sandboxed_exec",
+      "text": "pytest tests/test_sandbox_network_gate.py -q",
+      "state": "success",
+      "result": "5 passed in 1.2s"
+    },
+    {
+      "kind": "message",
+      "role": "assistant",
+      "text": "All green. Both witnesses are in place now:\n\n1. self-pipe (`arg4==0`) is allowed\n2. real egress (`arg4!=0`, nonzero sockaddr) is still denied\n\nReady for review on #3060.",
+      "state": "success"
+    }
+  ]
+}

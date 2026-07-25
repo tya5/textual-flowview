@@ -149,8 +149,9 @@ class FlowView(ScrollView, Generic[T]):
         self._gutter_cache: dict[int, tuple[int, int, int, list[Strip]]] = {}
         # entry ids with an active presentation loop (one worker per entry).
         self._presenting: set[int] = set()
-        # STICKY_BOTTOM: are we currently glued to the bottom edge?
+        # STICKY_BOTTOM/STICKY_TOP: are we currently glued to that edge?
         self._follow_bottom = anchor is Anchor.STICKY_BOTTOM
+        self._follow_top = anchor is Anchor.STICKY_TOP
         # Single-selection state, owned by the view (not the entry).
         self._selected: Entry[T] | None = None
 
@@ -184,6 +185,9 @@ class FlowView(ScrollView, Generic[T]):
         if self._viewport.anchor is Anchor.STICKY_BOTTOM:
             # Follow only while parked at the bottom; scrolling up releases it.
             self._follow_bottom = int(new_value) >= self.max_scroll_y
+        elif self._viewport.anchor is Anchor.STICKY_TOP:
+            # Follow only while parked at the top; scrolling down releases it.
+            self._follow_top = int(new_value) <= 0
         self._present_visible()
 
     # -- ModelListener (internal, called on the message loop) -------------
@@ -702,6 +706,8 @@ class FlowView(ScrollView, Generic[T]):
         self.virtual_size = Size(self._content_width(), self._viewport.total_height)
         if self._viewport.anchor is Anchor.STICKY_BOTTOM and self._follow_bottom:
             self.scroll_to(y=self.max_scroll_y, animate=False)
+        elif self._viewport.anchor is Anchor.STICKY_TOP and self._follow_top:
+            self.scroll_to(y=0, animate=False)
         elif anchor_state is not None:
             self._viewport.restore_anchor(anchor_state)
             self.scroll_to(y=self._viewport.scroll_y, animate=False)
