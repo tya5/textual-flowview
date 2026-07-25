@@ -201,6 +201,27 @@ Style the highlight via the `flowview--selected` component class:
 FlowView > .flowview--selected { background: $accent 30%; }
 ```
 
+## Interaction & content replacement
+
+`FlowView` paints Rich renderables — it doesn't mount a real widget per row.
+To build **clickable controls inside the flow** (buttons, option chips, an
+intervention selector), draw them in the presenter and hit-test the click:
+`FlowView.Clicked` reports the entry *and the position within it*, so you know
+which control was pressed.
+
+```python
+class MyApp(App):
+    def on_flow_view_clicked(self, event: FlowView.Clicked) -> None:
+        entry, col, row = event.entry, event.x, event.y   # x,y local to the entry body
+        ...
+```
+
+Replace a specific item's content at any time — mutate it and `entry.update()`,
+or swap the whole object with `entry.set_item(new)` (handy for immutable items
+via `dataclasses.replace`). Either re-presents just that entry. See
+`examples/intervention.py` for a clickable selector that resolves via
+`set_item`.
+
 ## Search
 
 Query entries with a predicate (over the item, state, or metadata) and jump to
@@ -230,9 +251,10 @@ if hit:
 ## Examples
 
 ```bash
-PYTHONPATH=src python examples/showcase.py   # live AI-agent activity feed
-PYTHONPATH=src python examples/groups.py      # collapsible grouped pipeline
-PYTHONPATH=src python examples/chat.py        # streaming chat
+PYTHONPATH=src python examples/showcase.py       # live AI-agent activity feed
+PYTHONPATH=src python examples/groups.py          # collapsible groups + sticky headers
+PYTHONPATH=src python examples/intervention.py    # clickable in-flow selector
+PYTHONPATH=src python examples/chat.py            # streaming chat
 ```
 
 `showcase.py` demonstrates variable-height panels, a colored per-state gutter,

@@ -103,5 +103,25 @@ def test_remove_reports_correct_index() -> None:
     assert ("remove", mid.id, 1) in listener.events
 
 
+def test_set_item_replaces_and_bumps_revision() -> None:
+    m: FlowModel[Msg] = FlowModel()
+    listener = RecordingListener()
+    m._attach(listener)
+    e = m.append(Msg("old"))
+    rev = e.revision
+    e.set_item(Msg("new"))
+    assert e.item.text == "new"
+    assert e.revision == rev + 1  # re-presents
+    assert ("update", e.id, rev + 1) in listener.events
+
+
+def test_set_item_on_dead_entry_is_noop() -> None:
+    m: FlowModel[Msg] = FlowModel()
+    e = m.append(Msg("old"))
+    e.remove()
+    e.set_item(Msg("new"))
+    assert e.item.text == "old"
+
+
 def test_anchor_has_two_members() -> None:
     assert set(Anchor) == {Anchor.CURRENT, Anchor.STICKY_BOTTOM}

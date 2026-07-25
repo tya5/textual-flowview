@@ -79,6 +79,27 @@ class FlowView(ScrollView, Generic[T]):
         def control(self) -> FlowView[Any]:
             return self.flow_view
 
+    class Clicked(Message):
+        """Posted on every click that lands on an entry (unlike
+        :class:`Selected`, which only fires when the selection changes).
+
+        Carries the entry and the click position **within that entry's body**:
+        ``x`` is the column (0 = first body cell; negative means the gutter),
+        ``y`` is the row within the entry. Use it to hit-test presenter-drawn
+        controls — buttons, option chips, an intervention selector.
+        """
+
+        def __init__(self, flow_view: FlowView[Any], entry: Entry[Any], x: int, y: int) -> None:
+            self.flow_view = flow_view
+            self.entry = entry
+            self.x = x
+            self.y = y
+            super().__init__()
+
+        @property
+        def control(self) -> FlowView[Any]:
+            return self.flow_view
+
     def __init__(
         self,
         *,
@@ -329,13 +350,32 @@ class FlowView(ScrollView, Generic[T]):
         if offset is None:
             self.clear_selection()
             return
-        virtual_y = offset.y + self.scroll_offset.y
-        located = self._viewport.locate(virtual_y)
-        if located is None:
+        hit = self._entry_at_screen(offset.x, offset.y)
+        if hit is None:
             self.clear_selection()
             return
-        index, _ = located
-        self.select(self._viewport.entries[index])
+        entry, local_x, local_y = hit
+        self.select(entry)
+        self.post_message(self.Clicked(self, entry, local_x, local_y))
+
+    def _entry_at_screen(self, x: int, y: int) -> tuple[Entry[T], int, int] | None:
+        """Map a screen cell ``(x, y)`` in the content area to the entry drawn
+        there and the position within that entry's body — accounting for a
+        pinned sticky header overlaying the top rows."""
+        local_x = x - self._gutter_width
+        scroll_y = int(self.scroll_offset.y)
+
+        sticky = self._sticky_state(scroll_y)
+        if sticky is not None:
+            header, header_h, push = sticky
+            if 0 <= y < header_h - push:
+                return header, local_x, y + push
+
+        located = self._viewport.locate(y + scroll_y)
+        if located is None:
+            return None
+        index, local_y = located
+        return self._viewport.entries[index], local_x, local_y
 
     # -- rendering ---------------------------------------------------------
 

@@ -163,6 +163,20 @@ class Entry(Generic[T]):
         self._revision += 1
         self._model._on_entry_updated(self)
 
+    def set_item(self, item: T) -> None:
+        """Replace the wrapped item and re-present.
+
+        Use this to swap the whole object (e.g. immutable items via
+        ``dataclasses.replace``); use :meth:`update` when you mutated the
+        existing item in place. Both bump the revision and re-present. A no-op
+        on a removed entry.
+        """
+        if not self._alive:
+            return
+        self._item = item
+        self._revision += 1
+        self._model._on_entry_updated(self)
+
     def remove(self) -> None:
         """Remove this item from the model. A no-op if already removed."""
         if not self._alive:
