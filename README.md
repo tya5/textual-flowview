@@ -359,6 +359,43 @@ via `dataclasses.replace`). Either re-presents just that entry. See
 `examples/intervention.py` for a clickable selector that resolves via
 `set_item`.
 
+### Design: interactive widgets live *outside* the flow
+
+FlowView **paints renderables; it does not mount a Textual widget per entry** —
+that's what keeps it O(viewport) instead of O(N) and lets it scroll thousands of
+variable-height items smoothly. As a deliberate consequence, real interactive
+widgets (`Input`, `Select`, `Button`) are **not embedded in the flow**. Instead:
+
+- **Display / light interaction lives in the flow** — presenter renderables plus
+  `FlowView.Clicked` hit-testing (option chips, buttons drawn as text).
+- **Real editing widgets live outside the flow** — dock a normal Textual widget
+  (a composer, an editor, a modal) and wire it to the flow through the existing
+  messages: `Clicked` / `Selected` flow *out*, and `model.append()` /
+  `entry.set_item()` drive updates back *in*.
+
+```python
+def compose(self):
+    yield self.view                 # FlowView (history)
+    yield Input(id="editor")        # real interactive widget, docked outside
+
+def on_flow_view_clicked(self, ev: FlowView.Clicked):
+    self._editing = ev.entry                       # app state: which entry
+    editor = self.query_one("#editor", Input)
+    editor.value = ev.entry.item.text              # drive the external widget
+    editor.focus()
+
+def on_input_submitted(self, ev: Input.Submitted):
+    self._editing.set_item(replace(self._editing.item, text=ev.value))  # update the entry
+```
+
+So the library provides the flow↔app plumbing (`Clicked`/`Selected` out,
+`append`/`update`/`set_item` in); interactive widgets are the app's own,
+external, and updated dynamically through it. The only thing this rules out is a
+real editing widget rendered *inline and scrolling with a specific entry*; if a
+UX needs that, dock or modal it instead (see
+[issue #1](https://github.com/tya5/textual-flowview/issues/1)). `examples/reyn_poc/`
+follows this pattern (a docked composer over a painted conversation).
+
 ## Search
 
 Query entries with a predicate (over the item, state, or metadata) and jump to
