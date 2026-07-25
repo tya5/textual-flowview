@@ -256,3 +256,33 @@ async def test_track_visibility_release_on_remove() -> None:
         await pilot.pause()
         assert r.item.log == ["show", "hide"]  # removal releases
         assert r.id not in view._observers
+
+
+@pytest.mark.asyncio
+async def test_animate_entry_can_drive_the_gutter_via_refresh_gutter() -> None:
+    # The same animate_entry mechanism animates the gutter (not just the body):
+    # pair it with refresh_gutter + a decorator that re-derives each call.
+    model: FlowModel[Track] = FlowModel()
+    rows = [model.append(Track()) for _ in range(100)]
+    gutter = CountingGutter()
+
+    class A(App):
+        def compose(self) -> ComposeResult:
+            yield FlowView(
+                model=model, presenter=TrackPresenter(), decorator=gutter,
+                gutter_width=1, spacing=0,
+            )
+
+    app = A()
+    async with app.run_test(size=(40, 10)) as pilot:
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        view.animate_entry(rows[0], 0.02, view.refresh_gutter)   # visible
+        view.animate_entry(rows[90], 0.02, view.refresh_gutter)  # off-screen
+        before = gutter.calls
+        await asyncio.sleep(0.2)
+        await pilot.pause()
+        after_visible = gutter.calls
+        assert after_visible > before   # the visible gutter re-derived on a clock
+        # row 90 is off-screen -> its animation is paused, so it isn't driving
+        # extra gutter work (only row 0's visible re-derivations happened).

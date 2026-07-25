@@ -284,35 +284,45 @@ straight into a `Presentation`: `Panel`, `Table`, `Syntax`, `Markdown`, and the
 built-in indicators `rich.spinner.Spinner` and `rich.progress_bar.ProgressBar` —
 no custom drawing.
 
-FlowView caches an entry's render, so animation needs a clock:
+FlowView caches an entry's render, so animation needs a clock. There is **one
+animation primitive** — `animate_entry` — and the callback decides *what* to
+re-render, so the gutter and the body animate the same way:
 
-- **Gutter spinner** — set `FlowView(animation_fps=12)` and use a time-based
-  decorator (`rich.spinner.Spinner().render(time)`). **FlowView owns the clock**
-  and re-derives the gutter itself — no app timer, no `set_metadata`, and the
-  body is never re-presented. This is the cheap, recommended home for spinners.
-- **Body indicator** (progress bar, "thinking…") — the body's *content* changes
-  over time, so use a **viewport-gated animation**:
+```python
+view.animate_entry(entry, interval, callback)   # ticks only while on screen
+```
 
-  ```python
-  def advance(e):
-      e.item.progress = min(1.0, e.item.progress + 0.05)
-      e.update()
-      if e.item.progress >= 1.0:
-          view.stop_entry_animation(e)
+`animate_entry(entry, interval, callback)` ties a timer to the viewport: FlowView
+**pauses it when the entry scrolls off screen and resumes it when it scrolls
+back**, so off-screen entries do no work. `stop_entry_animation(entry)` (or the
+returned handle's `.stop()`) cancels it; removal cleans it up. The callback
+re-renders whichever part changed:
 
-  view.animate_entry(entry, 1 / 15, advance)   # runs only while on screen
-  ```
+```python
+# body — content that changes over time (progress bar, "thinking…")
+def advance(e):
+    e.item.progress = min(1.0, e.item.progress + 0.05)
+    e.update()                       # re-present the body
+    if e.item.progress >= 1.0:
+        view.stop_entry_animation(e)
+view.animate_entry(entry, 1 / 15, advance)
 
-  `animate_entry(entry, interval, callback)` ties the timer to the viewport:
-  FlowView **pauses it when the entry scrolls off screen and resumes it when it
-  scrolls back**, so off-screen entries do no work. `stop_entry_animation(entry)`
-  (or the returned handle's `.stop()`) cancels it; removal cleans it up.
+# gutter — a time-based decorator (rich.spinner.Spinner().render(time))
+view.animate_entry(entry, 1 / 12, view.refresh_gutter)   # re-derive the gutter
+```
 
-  Even a plain `entry.update()` on an **off-screen** entry is cheap: FlowView
-  **defers** the re-present and reflow until the entry scrolls into view.
+`refresh_gutter(entry)` is the gutter counterpart of `entry.update()` (re-derives
+the gutter, never the body). And a plain `entry.update()` on an **off-screen**
+entry is cheap too: FlowView **defers** the re-present and reflow until it
+scrolls into view.
 
-See `examples/progress.py` — the gutter spinner is FlowView-driven
-(`animation_fps`); each task's progress is a viewport-gated `animate_entry`.
+**Shorthand:** `FlowView(animation_fps=12)` auto-drives the gutter for *all*
+visible entries (equivalent to `refresh_gutter` on each, with no per-entry
+registration) — handy for "every RUNNING entry spins" with a time-based
+decorator.
+
+See `examples/progress.py` (a gutter spinner via `animation_fps`, body progress
+via `animate_entry`).
 
 ### Viewport-scoped resources (the general hook)
 

@@ -177,9 +177,9 @@ class FlowView(ScrollView, Generic[T]):
         # Rows to pre-present *ahead of the scroll direction*, beyond the static
         # overscan band. None -> one viewport height. 0 disables read-ahead.
         self._read_ahead = read_ahead
-        # >0: FlowView drives gutter animation itself at this frame rate, so a
-        # time-based decorator (e.g. rich.spinner.Spinner) animates with no app
-        # timer and no set_metadata. 0 disables it.
+        # >0: shorthand that auto-drives every visible entry's gutter at this
+        # frame rate (like refresh_gutter on each, no per-entry registration) so
+        # a time-based decorator animates on its own. 0 disables it.
         self._animation_fps = max(0.0, animation_fps)
         # Direction of the last scroll: -1 up, +1 down, 0 none.
         self._scroll_dir = 0
@@ -440,6 +440,20 @@ class FlowView(ScrollView, Generic[T]):
                 observer.on_hide(observer.entry)
 
     # -- per-entry animation (a timer built on track_visibility) -----------
+
+    def refresh_gutter(self, entry: Entry[T]) -> None:
+        """Re-derive ``entry``'s gutter on the next paint — the gutter animation
+        counterpart of ``entry.update()`` (which re-presents the body).
+
+        Pair it with a time-based decorator (e.g. ``rich.spinner.Spinner``) to
+        animate a gutter spinner via :meth:`animate_entry`::
+
+            view.animate_entry(entry, 1 / 12, view.refresh_gutter)
+
+        The body is left cached — no re-present, no reflow.
+        """
+        self._gutter_cache.pop(entry.id, None)
+        self.refresh()
 
     def animate_entry(
         self,
