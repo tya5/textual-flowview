@@ -450,6 +450,7 @@ default (`ALLOW_SELECT`).
 ## Examples
 
 ```bash
+PYTHONPATH=src python examples/dashboard.py       # 400 live hosts, viewport-scoped animation
 PYTHONPATH=src python examples/showcase.py       # live AI-agent activity feed
 PYTHONPATH=src python examples/groups.py          # collapsible groups + sticky headers
 PYTHONPATH=src python examples/intervention.py    # clickable in-flow selector
