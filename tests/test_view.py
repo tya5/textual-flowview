@@ -238,3 +238,30 @@ async def test_visible_update_repng_immediately() -> None:
         await pilot.pause()
         pres = view._layout.get(row, view._body_width())
         assert pres is not None and "second" in pres.renderable.plain
+
+
+@pytest.mark.asyncio
+async def test_animated_scroll_with_updates_does_not_crash() -> None:
+    # Regression: a fixed-height entry.update() during an animated (keyboard /
+    # wheel) scroll used to cancel Textual's in-flight scroll animation and
+    # KeyError inside the animator. Reaching the end without raising is the test.
+    import asyncio
+
+    model: FlowModel[Note] = FlowModel()
+    rows = [model.append(Note(text=f"n{i}", lines=1)) for i in range(200)]
+
+    class FlowApp(App):
+        def compose(self) -> ComposeResult:
+            yield FlowView(model=model, presenter=NotePresenter(), spacing=0)
+
+    app = FlowApp()
+    async with app.run_test(size=(40, 10)) as pilot:
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        for k in range(12):
+            view.scroll_relative(y=5, animate=True)  # animated scroll
+            for r in rows[:5]:
+                r.item.text = f"tick-{k}"
+                r.update()                            # fixed-height update mid-scroll
+            await asyncio.sleep(0.02)
+            await pilot.pause()

@@ -943,13 +943,20 @@ class FlowView(ScrollView, Generic[T]):
         self._viewport.invalidate_heights()
         self._sticky_cache = None
         self.virtual_size = Size(self._content_width(), self._viewport.total_height)
+        target: int | None = None
         if self._viewport.anchor is Anchor.STICKY_BOTTOM and self._follow_bottom:
-            self.scroll_to(y=self.max_scroll_y, animate=False)
+            target = self.max_scroll_y
         elif self._viewport.anchor is Anchor.STICKY_TOP and self._follow_top:
-            self.scroll_to(y=0, animate=False)
+            target = 0
         elif anchor_state is not None:
             self._viewport.restore_anchor(anchor_state)
-            self.scroll_to(y=self._viewport.scroll_y, animate=False)
+            target = self._viewport.scroll_y
+        # Only scroll if the anchor target actually differs from where we are.
+        # A no-op scroll_to would cancel an in-flight animated scroll mid-flight
+        # (e.g. a fixed-height entry.update() during a keyboard/wheel scroll),
+        # corrupting Textual's animator — so skip it when nothing moved.
+        if target is not None and target != round(self.scroll_offset.y):
+            self.scroll_to(y=target, animate=False)
         self.refresh()
         self._sync_visibility()
 
