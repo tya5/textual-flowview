@@ -270,6 +270,12 @@ if hit:
 | `reveal(entry)` | Un-hide if collapsed, then ensure visible. |
 | `select(entry)` / `clear_selection()` | Change selection. |
 | `find(pred)` / `find_next(pred)` / `find_previous(pred)` | Search entries. |
+| `entry_text(entry)` / `copy_entry(entry)` | Get / copy an entry's rendered text. |
+
+Clipboard copy uses Textual's own `App.copy_to_clipboard` (OSC 52):
+`entry_text(entry)` returns the entry's rendered body as plain text, and
+`copy_entry(entry)` copies it and returns it. Bind it to a key for a copy
+action (see `examples/showcase.py`, `y`).
 
 ## Examples
 

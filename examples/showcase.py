@@ -206,6 +206,7 @@ class ShowcaseApp(App):
         ("r", "replay", "Replay stream"),
         ("c", "fold", "Fold / unfold"),
         ("n", "next_issue", "Next non-OK"),
+        ("y", "copy_last", "Copy last"),
         ("j", "scroll_down", "Down"),
         ("k", "scroll_up", "Up"),
     ]
@@ -253,6 +254,14 @@ class ShowcaseApp(App):
         )
         if hit is not None:
             view.reveal(hit)
+
+    def action_copy_last(self) -> None:
+        entries = list(self.feed)
+        if not entries:
+            return
+        text = self.query_one(FlowView).copy_entry(entries[-1])
+        preview = text.splitlines()[0] if text else "(empty)"
+        self.notify(f"Copied: {preview[:40]}")
 
     def action_fold(self) -> None:
         # Collapse is purely a presenter concern: flip a flag and update().

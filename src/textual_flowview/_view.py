@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, ClassVar, Generic, TypeVar
 
-from rich.console import RenderableType
+from rich.console import Console, RenderableType
 from rich.panel import Panel
 from rich.text import Text
 from textual import events
@@ -342,6 +342,26 @@ class FlowView(ScrollView, Generic[T]):
         if entry.hidden:
             entry.show()
         self.ensure_visible(entry)
+
+    # -- clipboard ---------------------------------------------------------
+
+    def entry_text(self, entry: Entry[T]) -> str:
+        """The entry's rendered body as plain text (styles stripped), or ``""``
+        if it hasn't been presented yet. Useful for copying what's on screen."""
+        presentation = self._layout.get(entry, self._body_width())
+        if presentation is None:
+            return ""
+        console = Console(width=max(1, self._body_width()), no_color=True)
+        with console.capture() as capture:
+            console.print(presentation.renderable, end="")
+        return "\n".join(line.rstrip() for line in capture.get().splitlines())
+
+    def copy_entry(self, entry: Entry[T]) -> str:
+        """Copy :meth:`entry_text` to the system clipboard (via Textual's
+        OSC 52 support) and return the copied text."""
+        text = self.entry_text(entry)
+        self.app.copy_to_clipboard(text)
+        return text
 
     # -- input -------------------------------------------------------------
 
