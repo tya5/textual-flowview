@@ -18,6 +18,8 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 
+from rich.console import Group, RenderableType
+from rich.progress_bar import ProgressBar
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.containers import Container, VerticalScroll
@@ -28,8 +30,17 @@ from textual_flowview import FlowModel, FlowView, Presentation
 N = 1500
 
 
-def _content(i: int) -> str:
-    return f"row {i:04d}   the quick brown fox" + ("\n   …with a second line" if i % 3 == 0 else "")
+def render_row(i: int) -> RenderableType:
+    """Dashboard-style row — identical for both backends, so it's a fair fight."""
+    cpu = 20 + (i * 37) % 70
+    head = Text.assemble(
+        (f"host-{i:04d}", "bold"), (f"   {cpu:>3d}% cpu   ", "grey62"), ("● live", "green")
+    )
+    bar = ProgressBar(total=100, completed=cpu, width=32, finished_style="red")
+    return Group(head, bar)
+
+
+ROW_HEIGHT = 2
 
 
 @dataclass
@@ -39,8 +50,7 @@ class Row:
 
 class RowPresenter:
     async def present(self, item: Row, width: int) -> Presentation:
-        text = _content(item.i)
-        return Presentation(height=text.count("\n") + 1, renderable=Text(text))
+        return Presentation(height=ROW_HEIGHT, renderable=render_row(item.i))
 
 
 class Meter(Static):
@@ -97,7 +107,7 @@ class CompareApp(App):
         self._mode = "container"
         vs = VerticalScroll()
         await self.query_one("#host").mount(vs)
-        await vs.mount_all([Static(Text(_content(i))) for i in range(N)])
+        await vs.mount_all([Static(render_row(i)) for i in range(N)])
 
     async def action_container(self) -> None:
         if self._mode != "container":
