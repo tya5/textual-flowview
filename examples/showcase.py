@@ -65,10 +65,18 @@ KIND_COLOR = {
 # --------------------------------------------------------------------------
 
 
+SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
+
 class ActivityGutter:
     def decorate(self, entry: Entry[Event], width: int, height: int) -> RenderableType:
         color = STATE_COLOR.get(entry.state, "grey50")
-        icon = STATE_ICON.get(entry.state, "•")
+        if entry.state is EntryState.RUNNING:
+            # Animated spinner: the app ticks a "spin" metadata frame, which
+            # redraws only the gutter (never the body).
+            icon = SPINNER[entry.metadata.get("spin", 0) % len(SPINNER)]
+        else:
+            icon = STATE_ICON.get(entry.state, "•")
         rows = [icon if i == 0 else "┃" for i in range(max(1, height))]
         return Text("\n".join(rows), style=f"bold {color}")
 
@@ -170,6 +178,7 @@ SEED: list[tuple[Event, EntryState]] = [
         ),
         EntryState.SUCCESS,
     ),
+    (Event("tool", "watch", "09:31:29", "watching for file changes…"), EntryState.RUNNING),
 ]
 
 STREAM_TASK = (
@@ -223,6 +232,13 @@ class ShowcaseApp(App):
             entry = self.feed.append(event)
             entry.set_state(state)
         self.set_timer(0.6, self._stream)
+        # Drive the gutter spinner animation for RUNNING entries.
+        self.set_interval(0.08, self._spin)
+
+    def _spin(self) -> None:
+        for entry in self.feed:
+            if entry.state is EntryState.RUNNING:
+                entry.set_metadata("spin", entry.metadata.get("spin", 0) + 1)
 
     def action_replay(self) -> None:
         self.call_later(self._stream)

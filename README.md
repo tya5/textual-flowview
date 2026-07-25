@@ -201,6 +201,29 @@ Style the highlight via the `flowview--selected` component class:
 FlowView > .flowview--selected { background: $accent 30%; }
 ```
 
+## Rich renderables, indicators & animation
+
+An entry's view is a plain **`rich.console.RenderableType`** — the same type a
+Textual widget returns from `render()`. So any Rich/Textual renderable drops
+straight into a `Presentation`: `Panel`, `Table`, `Syntax`, `Markdown`, and the
+built-in indicators `rich.spinner.Spinner` and `rich.progress_bar.ProgressBar` —
+no custom drawing.
+
+FlowView caches an entry's render and redraws only on `update()` / metadata
+change, so animation is app-driven — tick a timer and advance the frame:
+
+- **Gutter indicator** (spinner via `set_metadata`) — redraws only the gutter,
+  never the body, never reflows. Cheapest.
+- **Body indicator** (progress bar via `update()`) — re-presents the body; no
+  reflow at fixed height.
+
+See `examples/progress.py` (Rich `Spinner` + `ProgressBar`).
+
+> Interactive Textual **widgets** (`Button`, `Select`, `Input`) are a different
+> thing — FlowView paints renderables rather than mounting child widgets, so
+> those aren't hosted per entry. For clickable controls, draw them and hit-test
+> `FlowView.Clicked` (below).
+
 ## Interaction & content replacement
 
 `FlowView` paints Rich renderables — it doesn't mount a real widget per row.
@@ -254,6 +277,7 @@ if hit:
 PYTHONPATH=src python examples/showcase.py       # live AI-agent activity feed
 PYTHONPATH=src python examples/groups.py          # collapsible groups + sticky headers
 PYTHONPATH=src python examples/intervention.py    # clickable in-flow selector
+PYTHONPATH=src python examples/progress.py        # Rich Spinner + ProgressBar in entries
 PYTHONPATH=src python examples/chat.py            # streaming chat
 ```
 
