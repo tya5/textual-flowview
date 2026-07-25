@@ -1,0 +1,414 @@
+from __future__ import annotations
+
+from typing import Generic, TypeVar
+
+from rich.console import RenderableType
+from rich.panel import Panel
+from rich.text import Text
+from textual import events
+from textual.geometry import Size
+from textual.message import Message
+from textual.scroll_view import ScrollView
+from textual.strip import Strip
+
+from ._anchor import Anchor
+from ._decorator import FlowDecorator
+from ._entry import Entry
+from ._layout import FlowLayout
+from ._model import FlowModel
+from ._presentation import Presentation
+from ._presenter import FlowPresenter
+from ._state import EntryState
+from ._viewport import Viewport
+
+__all__ = ["FlowView"]
+
+T = TypeVar("T")
+
+
+class FlowView(ScrollView, Generic[T]):
+    """A virtualized flow of variable-height items.
+
+    ``FlowView`` uses :class:`~textual.scroll_view.ScrollView` purely as a
+    *scroll mechanism* (scrollbars, wheel, keyboard, focus, ``virtual_size``).
+    It never relies on ScrollView's drawing model: it decides which entries to
+    paint itself via :class:`Viewport` (visible range) and :class:`FlowLayout`
+    (presentation/height cache), presenting off-screen items only when they are
+    actually needed.
+
+    The widget knows nothing about the item type ``T`` — only the
+    :class:`FlowPresenter` does.
+    """
+
+    can_focus = True
+
+    COMPONENT_CLASSES = {"flowview--selected"}
+    """
+    | Class | Applied to |
+    | :- | :- |
+    | ``flowview--selected`` | The currently selected entry's rows. |
+    """
+
+    DEFAULT_CSS = """
+    FlowView > .flowview--selected {
+        background: $accent 30%;
+    }
+    """
+
+    class Selected(Message):
+        """Posted when the selected entry changes (including to ``None``).
+
+        Access the chosen entry via :attr:`entry`; ``event.control`` is the
+        :class:`FlowView` that emitted it.
+        """
+
+        def __init__(self, flow_view: "FlowView[T]", entry: "Entry[T] | None") -> None:
+            self.flow_view = flow_view
+            self.entry = entry
+            super().__init__()
+
+        @property
+        def control(self) -> "FlowView[T]":
+            return self.flow_view
+
+    def __init__(
+        self,
+        *,
+        model: FlowModel[T],
+        presenter: FlowPresenter[T],
+        decorator: FlowDecorator[T] | None = None,
+        gutter_width: int | None = None,
+        anchor: Anchor = Anchor.CURRENT,
+        estimated_height: int = 1,
+        overscan: int = 4,
+        placeholder: RenderableType = "Loading...",
+        name: str | None = None,
+        id: str | None = None,
+        classes: str | None = None,
+    ) -> None:
+        super().__init__(name=name, id=id, classes=classes)
+        self._model = model
+        self._presenter = presenter
+        self._decorator = decorator
+        # No decorator -> no gutter. Decorator but unset width -> a sensible 2.
+        if gutter_width is None:
+            gutter_width = 2 if decorator is not None else 0
+        self._gutter_width = max(0, gutter_width)
+        self._layout: FlowLayout[T] = FlowLayout()
+        self._viewport: Viewport[T] = Viewport(
+            self._layout,
+            anchor=anchor,
+            estimated_height=estimated_height,
+            overscan=overscan,
+        )
+        self._placeholder = placeholder
+        # id -> (revision, width, strips)
+        self._strip_cache: dict[int, tuple[int, int, list[Strip]]] = {}
+        # id -> (decor_revision, width, height, strips)
+        self._gutter_cache: dict[int, tuple[int, int, int, list[Strip]]] = {}
+        # (id, revision, width) currently being presented
+        self._inflight: set[tuple[int, int, int]] = set()
+        # STICKY_BOTTOM: are we currently glued to the bottom edge?
+        self._follow_bottom = anchor is Anchor.STICKY_BOTTOM
+        # Single-selection state, owned by the view (not the entry).
+        self._selected: Entry[T] | None = None
+
+    # -- lifecycle ---------------------------------------------------------
+
+    def on_mount(self) -> None:
+        self._model._attach(self)
+        self._sync_geometry()
+        self._viewport.set_entries(list(self._model))
+        self._refresh_layout(None)
+        self._present_visible()
+
+    def on_unmount(self) -> None:
+        self._model._detach()
+
+    def on_resize(self) -> None:
+        state = self._capture()
+        self._sync_geometry()
+        width = self._content_width()
+        self._layout.retain_width(width)
+        self._strip_cache.clear()
+        self._refresh_layout(state)
+        self._present_visible()
+
+    def watch_scroll_y(self, old_value: float, new_value: float) -> None:
+        super().watch_scroll_y(old_value, new_value)
+        if self._viewport.anchor is Anchor.STICKY_BOTTOM:
+            # Follow only while parked at the bottom; scrolling up releases it.
+            self._follow_bottom = int(new_value) >= self.max_scroll_y
+        self._present_visible()
+
+    # -- ModelListener (internal, called on the message loop) -------------
+
+    def on_flow_insert(self, entry: Entry[T], index: int) -> None:
+        state = self._capture()
+        self._viewport.set_entries(list(self._model))
+        self._refresh_layout(state)
+
+    def on_flow_update(self, entry: Entry[T]) -> None:
+        # The revision bump already makes the cached presentation a miss;
+        # drop the strip cache for this entry and re-present.
+        self._strip_cache.pop(entry.id, None)
+        state = self._capture()
+        self._refresh_layout(state)
+        self._present_entry(entry)
+
+    def on_flow_remove(self, entry: Entry[T], index: int) -> None:
+        if self._selected is entry:
+            self.select(None)
+        state = self._capture()
+        self._layout.discard(entry.id)
+        self._strip_cache.pop(entry.id, None)
+        self._viewport.set_entries(list(self._model))
+        self._refresh_layout(state)
+
+    def on_flow_clear(self) -> None:
+        if self._selected is not None:
+            self.select(None)
+        self._layout.clear()
+        self._strip_cache.clear()
+        self._gutter_cache.clear()
+        self._inflight.clear()
+        self._viewport.set_entries([])
+        self._refresh_layout(None)
+        self.scroll_to(y=0, animate=False)
+
+    def on_flow_decorate(self, entry: Entry[T]) -> None:
+        # Gutter-only change: drop the gutter cache and repaint. The body's
+        # strip cache and the layout heights are untouched, so no re-present
+        # and no reflow happen.
+        self._gutter_cache.pop(entry.id, None)
+        self.refresh()
+
+    # -- public API --------------------------------------------------------
+
+    def scroll_to_top(self) -> None:
+        self.scroll_to(y=0, animate=False)
+
+    def scroll_to_bottom(self) -> None:
+        self.scroll_to(y=self.max_scroll_y, animate=False)
+
+    def scroll_to_entry(self, entry: Entry[T]) -> None:
+        """Scroll so ``entry`` sits at the top of the viewport."""
+        self._sync_scroll()
+        self._viewport.scroll_to_entry(entry, top=True)
+        self.scroll_to(y=self._viewport.scroll_y, animate=False)
+
+    def ensure_visible(self, entry: Entry[T]) -> None:
+        """Scroll the minimum amount so ``entry`` is fully visible."""
+        self._sync_scroll()
+        self._viewport.scroll_to_entry(entry, top=False)
+        self.scroll_to(y=self._viewport.scroll_y, animate=False)
+
+    @property
+    def selected(self) -> Entry[T] | None:
+        """The currently selected entry, or ``None``."""
+        return self._selected
+
+    def select(self, entry: Entry[T] | None) -> None:
+        """Select ``entry`` (or clear the selection with ``None``).
+
+        A no-op if it is already selected. Posts :class:`FlowView.Selected`.
+        """
+        if entry is not None and not entry.alive:
+            return
+        if self._selected is entry:
+            return
+        self._selected = entry
+        self.refresh()
+        self.post_message(self.Selected(self, entry))
+
+    def clear_selection(self) -> None:
+        """Clear the current selection (if any)."""
+        self.select(None)
+
+    # -- input -------------------------------------------------------------
+
+    def on_click(self, event: events.Click) -> None:
+        offset = event.get_content_offset(self)
+        if offset is None:
+            self.clear_selection()
+            return
+        virtual_y = offset.y + self.scroll_offset.y
+        located = self._viewport.locate(virtual_y)
+        if located is None:
+            self.clear_selection()
+            return
+        index, _ = located
+        self.select(self._viewport.entries[index])
+
+    # -- rendering ---------------------------------------------------------
+
+    def render_line(self, y: int) -> Strip:
+        content_width = self._content_width()
+        if content_width <= 0:
+            return Strip.blank(self.size.width)
+        _, scroll_y = self.scroll_offset
+        virtual_y = y + scroll_y
+        located = self._viewport.locate(virtual_y)
+        if located is None:
+            return Strip.blank(content_width)
+        index, local_y = located
+        entry = self._viewport.entries[index]
+
+        gutter_w = self._gutter_width
+        body_w = max(1, content_width - gutter_w)
+        body_strips = self._entry_strips(entry, body_w)
+        height = len(body_strips)
+        body_line = (
+            body_strips[local_y] if 0 <= local_y < height else Strip.blank(body_w)
+        ).adjust_cell_length(body_w)
+
+        if gutter_w > 0:
+            gutter_strips = self._gutter_strips(entry, gutter_w, height)
+            gutter_line = (
+                gutter_strips[local_y]
+                if 0 <= local_y < len(gutter_strips)
+                else Strip.blank(gutter_w)
+            ).adjust_cell_length(gutter_w)
+            line = Strip.join([gutter_line, body_line])
+        else:
+            line = body_line
+
+        if self._selected is entry:
+            line = line.apply_style(self.get_component_rich_style("flowview--selected"))
+        return line
+
+    def _entry_strips(self, entry: Entry[T], width: int) -> list[Strip]:
+        presentation = self._layout.get(entry, width)
+        if presentation is None:
+            # Not presented at this width/revision yet: show placeholder and
+            # kick off (deduped) presentation.
+            self._present_entry(entry)
+            return self._render_to_strips(
+                self._placeholder, width, self._viewport.estimated_height
+            )
+        cached = self._strip_cache.get(entry.id)
+        if cached is not None and cached[0] == entry.revision and cached[1] == width:
+            return cached[2]
+        strips = self._render_to_strips(presentation.renderable, width, presentation.height)
+        self._strip_cache[entry.id] = (entry.revision, width, strips)
+        return strips
+
+    def _gutter_strips(self, entry: Entry[T], width: int, height: int) -> list[Strip]:
+        cached = self._gutter_cache.get(entry.id)
+        if (
+            cached is not None
+            and cached[0] == entry._decor_revision
+            and cached[1] == width
+            and cached[2] == height
+        ):
+            return cached[3]
+        if self._decorator is not None:
+            renderable: RenderableType = self._decorator.decorate(entry, width, height)
+        else:
+            renderable = Text("")
+        strips = self._render_to_strips(renderable, width, height)
+        self._gutter_cache[entry.id] = (entry._decor_revision, width, height, strips)
+        return strips
+
+    def _render_to_strips(
+        self, renderable: RenderableType, width: int, height: int
+    ) -> list[Strip]:
+        options = self.app.console.options.update_dimensions(width, max(1, height))
+        lines = self.app.console.render_lines(renderable, options, pad=True)
+        return [Strip(line, width) for line in lines]
+
+    # -- presentation workers ---------------------------------------------
+
+    def _present_entry(self, entry: Entry[T]) -> None:
+        if not entry.alive:
+            return
+        if self._content_width() <= 0:
+            return
+        width = self._body_width()
+        if self._layout.get(entry, width) is not None:
+            return
+        key = (entry.id, entry.revision, width)
+        if key in self._inflight:
+            return
+        self._inflight.add(key)
+        # exclusive per-entry group: a newer present cancels the stale one
+        # (best-effort cancellation).
+        self.run_worker(
+            self._present_worker(entry, width, entry.revision),
+            group=f"flowview-present-{entry.id}",
+            exclusive=True,
+        )
+
+    async def _present_worker(self, entry: Entry[T], width: int, revision: int) -> None:
+        try:
+            errored = False
+            try:
+                presentation = await self._presenter.present(entry.item, width)
+            except Exception as exc:  # noqa: BLE001 - surface any presenter failure
+                presentation = self._error_presentation(exc)
+                errored = True
+            # Discard stale results: a newer revision (or removal) supersedes.
+            if not entry.alive or entry.revision != revision:
+                return
+            self._layout.store(entry.id, width, revision, presentation)
+            self._strip_cache.pop(entry.id, None)
+            state = self._capture()
+            self._refresh_layout(state)
+            if errored:
+                # Spec: a rendering error also flips the entry to ERROR so the
+                # gutter reflects it. This does not re-present the body.
+                entry.set_state(EntryState.ERROR)
+        finally:
+            self._inflight.discard((entry.id, revision, width))
+
+    def _error_presentation(self, exc: BaseException) -> Presentation:
+        body = Text(f"{type(exc).__name__}: {exc}", style="red")
+        panel = Panel(body, title="Rendering Error", border_style="red")
+        return Presentation(height=3, renderable=panel)
+
+    # -- geometry helpers --------------------------------------------------
+
+    def _content_width(self) -> int:
+        region = self.scrollable_content_region
+        return region.width if region.width > 0 else self.size.width
+
+    def _content_height(self) -> int:
+        region = self.scrollable_content_region
+        return region.height if region.height > 0 else self.size.height
+
+    def _body_width(self) -> int:
+        """Width available to the presenter (content width minus the gutter)."""
+        return max(1, self._content_width() - self._gutter_width)
+
+    def _sync_geometry(self) -> None:
+        self._viewport.set_size(self._content_width(), self._content_height())
+
+    def _sync_scroll(self) -> None:
+        _, scroll_y = self.scroll_offset
+        self._viewport.scroll_to_offset(int(scroll_y))
+
+    def _capture(self):  # type: ignore[no-untyped-def]
+        self._sync_geometry()
+        self._sync_scroll()
+        return self._viewport.capture_anchor()
+
+    def _refresh_layout(self, anchor_state) -> None:  # type: ignore[no-untyped-def]
+        self._viewport.invalidate_heights()
+        self.virtual_size = Size(self._content_width(), self._viewport.total_height)
+        if self._viewport.anchor is Anchor.STICKY_BOTTOM and self._follow_bottom:
+            self.scroll_to(y=self.max_scroll_y, animate=False)
+        elif anchor_state is not None:
+            self._viewport.restore_anchor(anchor_state)
+            self.scroll_to(y=self._viewport.scroll_y, animate=False)
+        self.refresh()
+
+    def _present_visible(self) -> None:
+        """Kick off presentation for every entry in (and just around) the
+        visible range, so scrolling reveals real content rather than
+        placeholders."""
+        if self._content_width() <= 0:
+            return
+        self._sync_geometry()
+        self._sync_scroll()
+        for entry in self._viewport.visible_range().entries:
+            self._present_entry(entry)

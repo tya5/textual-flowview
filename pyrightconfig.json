@@ -1,0 +1,5 @@
+{
+  "extraPaths": ["src"],
+  "include": ["src", "tests"],
+  "pythonVersion": "3.11"
+}
