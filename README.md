@@ -310,6 +310,11 @@ straight into a `Presentation`: `Panel`, `Table`, `Syntax`, `Markdown`, and the
 built-in indicators `rich.spinner.Spinner` and `rich.progress_bar.ProgressBar` —
 no custom drawing.
 
+Because a `Presentation` carries an **explicit height**, renderables whose height
+a `Static` can't auto-measure — a `rich.progress_bar.ProgressBar` is the classic
+one, it collapses to zero rows in a bare `Static` — just work in a `FlowView`.
+You tell FlowView the height; there's no per-widget `styles.height` to remember.
+
 FlowView caches an entry's render, so animation needs a clock. There is **one
 animation primitive** — `animate_entry` — and the callback decides *what* to
 re-render, so the gutter and the body animate the same way:
