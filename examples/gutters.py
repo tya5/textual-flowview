@@ -77,6 +77,7 @@ class UnreadGutter:
         mark = Text()
         mark.append("!" if high else " ", style="bold red" if high else "")
         mark.append("●" if unread else " ", style="cyan" if unread else "")
+        mark.append(" ")   # gap before the body
         rows = [mark] + [Text(" " * width) for _ in range(max(0, height - 1))]
         return Group(*rows)
 
@@ -125,7 +126,7 @@ class GuttersApp(App):
             model=self.notes,
             presenter=NotePresenter(),
             decorator=UnreadGutter(),
-            gutter_width=2,
+            gutter_width=3,
             right_decorator=AgeGutter(),
             right_gutter_width=5,
             animation_fps=1,   # re-derive visible gutters ~1x/s so ages tick
