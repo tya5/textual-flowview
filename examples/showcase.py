@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 
 from rich.console import Group, RenderableType
 from rich.panel import Panel
+from rich.rule import Rule
 from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
@@ -63,12 +64,16 @@ KIND_COLOR = {
 
 
 def kind_divider(above: Entry[Event], below: Entry[Event]) -> RenderableType | None:
-    """A section label drawn in the gap, but only where the activity kind
-    changes — a `separator` callable reading each entry's item."""
+    """A full-width labelled rule drawn in the gap, but only where the activity
+    kind changes — a `separator` callable reading each entry's item."""
     if above.item.kind == below.item.kind:
         return None
-    colour = KIND_COLOR.get(below.item.kind, "grey42")
-    return Text(f"── {below.item.kind} ", style=colour)
+    colour = KIND_COLOR.get(below.item.kind, "grey50")
+    return Rule(
+        title=f"{below.item.kind}",
+        characters="─",
+        style=colour,
+    )
 
 
 # --------------------------------------------------------------------------
