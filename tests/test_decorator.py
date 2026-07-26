@@ -189,3 +189,60 @@ async def test_no_decorator_means_no_gutter() -> None:
         view = app.query_one(FlowView)
         assert view._gutter_width == 0
         assert view._body_width() == view._content_width()
+
+
+# -- Right / dual gutter ---------------------------------------------------
+
+
+class MarkDecorator:
+    """A gutter that fills its width with a single marker char, so we can spot
+    it on either edge of the rendered line."""
+
+    def __init__(self, char: str) -> None:
+        self.char = char
+
+    def decorate(self, entry: object, width: int, height: int) -> Text:
+        return Text("\n".join(self.char * width for _ in range(max(1, height))))
+
+
+@pytest.mark.asyncio
+async def test_right_gutter_renders_on_right_edge() -> None:
+    model: FlowModel[Job] = FlowModel()
+    model.append(Job("work"))
+    app = _app(
+        model,
+        CountingPresenter(),
+        right_decorator=MarkDecorator("R"),
+        right_gutter_width=2,
+    )
+    async with app.run_test(size=(40, 10)) as pilot:
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        assert view._gutter_width == 0  # nothing on the left
+        assert view._right_gutter_width == 2
+        assert view._body_width() == view._content_width() - 2
+        line0 = view.render_line(0).text
+        assert line0[:1] != "R"  # left edge is body, not gutter
+        assert line0[-2:] == "RR"  # right edge is the gutter
+
+
+@pytest.mark.asyncio
+async def test_both_gutters_are_independent() -> None:
+    model: FlowModel[Job] = FlowModel()
+    model.append(Job("work"))
+    app = _app(
+        model,
+        CountingPresenter(),
+        decorator=MarkDecorator("L"),
+        gutter_width=2,
+        right_decorator=MarkDecorator("R"),
+        right_gutter_width=3,
+    )
+    async with app.run_test(size=(40, 10)) as pilot:
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        assert view._body_width() == view._content_width() - 2 - 3
+        line0 = view.render_line(0).text
+        assert line0[:2] == "LL"
+        assert line0[-3:] == "RRR"
+        assert "work" in line0  # body still drawn between the gutters

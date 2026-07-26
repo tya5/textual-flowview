@@ -156,6 +156,8 @@ class FlowView(ScrollView, Generic[T]):
         presenter: FlowPresenter[T],
         decorator: FlowDecorator[T] | None = None,
         gutter_width: int | None = None,
+        right_decorator: FlowDecorator[T] | None = None,
+        right_gutter_width: int | None = None,
         sticky_header: Callable[[Entry[T]], bool] | None = None,
         anchor: Anchor = Anchor.CURRENT,
         estimated_height: int = 1,
@@ -171,7 +173,11 @@ class FlowView(ScrollView, Generic[T]):
         super().__init__(name=name, id=id, classes=classes)
         self._model = model
         self._presenter = presenter
+        # Left and right gutters are independent: each has its own decorator and
+        # width. `decorator`/`gutter_width` are the left gutter (unchanged);
+        # `right_decorator`/`right_gutter_width` add an optional right one.
         self._decorator = decorator
+        self._right_decorator = right_decorator
         # Predicate marking an entry as a group header to pin while scrolling.
         self._is_sticky_header = sticky_header
         # Rows to pre-present *ahead of the scroll direction*, beyond the static
@@ -189,6 +195,9 @@ class FlowView(ScrollView, Generic[T]):
         if gutter_width is None:
             gutter_width = 2 if decorator is not None else 0
         self._gutter_width = max(0, gutter_width)
+        if right_gutter_width is None:
+            right_gutter_width = 2 if right_decorator is not None else 0
+        self._right_gutter_width = max(0, right_gutter_width)
         self._layout: FlowLayout[T] = FlowLayout()
         self._viewport: Viewport[T] = Viewport(
             self._layout,
@@ -200,8 +209,10 @@ class FlowView(ScrollView, Generic[T]):
         self._placeholder = placeholder
         # id -> (revision, width, strips)
         self._strip_cache: dict[int, tuple[int, int, list[Strip]]] = {}
-        # id -> (decor_revision, width, height, strips)
-        self._gutter_cache: dict[int, tuple[int, int, int, list[Strip]]] = {}
+        # (id, side) -> (decor_revision, width, height, strips)
+        self._gutter_cache: dict[
+            tuple[int, str], tuple[int, int, int, list[Strip]]
+        ] = {}
         # entry ids with an active presentation loop (one worker per entry).
         self._presenting: set[int] = set()
         # STICKY_BOTTOM/STICKY_TOP: are we currently glued to that edge?
@@ -331,7 +342,7 @@ class FlowView(ScrollView, Generic[T]):
         # Gutter-only change: drop the gutter cache and repaint. The body's
         # strip cache and the layout heights are untouched, so no re-present
         # and no reflow happen.
-        self._gutter_cache.pop(entry.id, None)
+        self._drop_gutter_cache(entry)
         self.refresh()
 
     # -- public API --------------------------------------------------------
@@ -452,8 +463,12 @@ class FlowView(ScrollView, Generic[T]):
 
         The body is left cached — no re-present, no reflow.
         """
-        self._gutter_cache.pop(entry.id, None)
+        self._drop_gutter_cache(entry)
         self.refresh()
+
+    def _drop_gutter_cache(self, entry: Entry[T]) -> None:
+        self._gutter_cache.pop((entry.id, "left"), None)
+        self._gutter_cache.pop((entry.id, "right"), None)
 
     def animate_entry(
         self,
@@ -702,24 +717,26 @@ class FlowView(ScrollView, Generic[T]):
     def _compose_line(
         self, entry: Entry[T], local_y: int, content_width: int, *, sticky: bool = False
     ) -> Strip:
-        gutter_w = self._gutter_width
-        body_w = max(1, content_width - gutter_w)
+        left_w = self._gutter_width
+        right_w = self._right_gutter_width
+        body_w = max(1, content_width - left_w - right_w)
         body_strips = self._entry_strips(entry, body_w)
         height = len(body_strips)
         body_line = (
             body_strips[local_y] if 0 <= local_y < height else Strip.blank(body_w)
         ).adjust_cell_length(body_w)
 
-        if gutter_w > 0:
-            gutter_strips = self._gutter_strips(entry, gutter_w, height)
-            gutter_line = (
-                gutter_strips[local_y]
-                if 0 <= local_y < len(gutter_strips)
-                else Strip.blank(gutter_w)
-            ).adjust_cell_length(gutter_w)
-            line = Strip.join([gutter_line, body_line])
-        else:
-            line = body_line
+        parts: list[Strip] = []
+        if left_w > 0:
+            parts.append(
+                self._gutter_line(entry, "left", left_w, height, local_y)
+            )
+        parts.append(body_line)
+        if right_w > 0:
+            parts.append(
+                self._gutter_line(entry, "right", right_w, height, local_y)
+            )
+        line = Strip.join(parts) if len(parts) > 1 else body_line
 
         # Full-row background: paint the whole line (gutter + body + padding)
         # edge to edge, so the entry reads as one continuous coloured block.
@@ -791,8 +808,19 @@ class FlowView(ScrollView, Generic[T]):
         self._strip_cache[entry.id] = (entry.revision, width, strips)
         return strips
 
-    def _gutter_strips(self, entry: Entry[T], width: int, height: int) -> list[Strip]:
-        cached = self._gutter_cache.get(entry.id)
+    def _gutter_line(
+        self, entry: Entry[T], side: str, width: int, height: int, local_y: int
+    ) -> Strip:
+        strips = self._gutter_strips(entry, side, width, height)
+        return (
+            strips[local_y] if 0 <= local_y < len(strips) else Strip.blank(width)
+        ).adjust_cell_length(width)
+
+    def _gutter_strips(
+        self, entry: Entry[T], side: str, width: int, height: int
+    ) -> list[Strip]:
+        key = (entry.id, side)
+        cached = self._gutter_cache.get(key)
         if (
             cached is not None
             and cached[0] == entry._decor_revision
@@ -800,12 +828,13 @@ class FlowView(ScrollView, Generic[T]):
             and cached[2] == height
         ):
             return cached[3]
-        if self._decorator is not None:
-            renderable: RenderableType = self._decorator.decorate(entry, width, height)
+        decorator = self._decorator if side == "left" else self._right_decorator
+        if decorator is not None:
+            renderable: RenderableType = decorator.decorate(entry, width, height)
         else:
             renderable = Text("")
         strips = self._render_to_strips(renderable, width, height)
-        self._gutter_cache[entry.id] = (entry._decor_revision, width, height, strips)
+        self._gutter_cache[key] = (entry._decor_revision, width, height, strips)
         return strips
 
     def _render_to_strips(
@@ -894,8 +923,10 @@ class FlowView(ScrollView, Generic[T]):
         return region.height if region.height > 0 else self.size.height
 
     def _body_width(self) -> int:
-        """Width available to the presenter (content width minus the gutter)."""
-        return max(1, self._content_width() - self._gutter_width)
+        """Width available to the presenter (content width minus both gutters)."""
+        return max(
+            1, self._content_width() - self._gutter_width - self._right_gutter_width
+        )
 
     def _sync_geometry(self) -> None:
         # The viewport looks up heights from the layout, which are cached under

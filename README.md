@@ -96,14 +96,17 @@ entry.remove()                 # no-op if already removed
 Each row is split into a **gutter** and a **body**:
 
 ```text
-┌────────┬──────────────────────────────┐
-│ Gutter │             Body             │
-└────────┴──────────────────────────────┘
+┌────────┬──────────────────────┬────────┐
+│ Gutter │         Body         │ Gutter │   ← the right gutter is optional
+└────────┴──────────────────────┴────────┘
 ```
 
 * The **body** is what `FlowPresenter` produces.
-* The **gutter** is what a `FlowDecorator` produces — status markers, icons,
-  badges, timestamps.
+* A **gutter** is what a `FlowDecorator` produces — status markers, icons,
+  badges, timestamps. There's one on the **left** by default; add a **right**
+  one with `right_decorator` / `right_gutter_width` (e.g. a state marker on the
+  left and a timestamp or a scrollbar-style indicator on the right). The two are
+  fully independent; the body simply gets whatever width is left over.
 
 They update **independently**. Changing an entry's state or metadata redraws
 only the gutter — the body is *not* re-presented and nothing re-layouts, so
@@ -115,8 +118,9 @@ from textual_flowview import EntryState, StateDecorator
 flow = FlowView(
     model=model,
     presenter=ChatPresenter(),
-    decorator=StateDecorator(),   # gutter markers per EntryState
+    decorator=StateDecorator(),   # left gutter: markers per EntryState
     gutter_width=2,
+    # right_decorator=TimeGutter(), right_gutter_width=6,  # optional second gutter
 )
 
 entry = model.append(msg)
