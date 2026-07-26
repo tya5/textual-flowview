@@ -26,7 +26,9 @@ class SelectApp(App):
         self.events: list[Entry | None] = []
 
     def compose(self) -> ComposeResult:
-        yield FlowView(model=self._model, presenter=RowPresenter(), spacing=0)
+        yield FlowView(
+            model=self._model, presenter=RowPresenter(), spacing=0, selectable=True
+        )
 
     def on_flow_view_selected(self, event: FlowView.Selected) -> None:
         self.events.append(event.entry)
