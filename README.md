@@ -37,14 +37,28 @@ laptop):
 The container mounts one widget per row — O(N) DOM, layout, and memory that grows
 with the list. FlowView **paints** the visible rows, so it is O(viewport): **one
 widget regardless of N**, a flat build and re-layout, and scrolling that stays
-smooth. `examples/compare.py` shows it live with an FPS meter — flip `c` / `f` to
-watch it go from **~20 FPS / 1500 widgets** (container) to **~60 FPS / 3 widgets**
-(FlowView) on the same 1500-row list. For a true visual side-by-side, run it in
-two panes (each is its own process / render loop):
+smooth.
+
+`examples/compare.py` shows it live with an FPS meter on the same 1500-row list.
+Flip `c` / `f` for the backend and `d` for the content:
+
+![The same 1500-row list: a Static-per-row container vs a FlowView, with a live FPS meter](assets/compare.gif)
+
+- **static** rows (plain text, rendered once): the container drops to **~14 FPS
+  with 1500 widgets** while FlowView holds **~60 FPS with 3** — a full re-layout
+  every scrolled frame vs painting the viewport.
+- **dynamic** rows (a rich `ProgressBar` re-rendering every frame) narrow the gap
+  — both sides then spend most of the frame re-rendering the visible bars — but
+  FlowView still leads and never grows past its viewport-sized widget count.
+
+For a true visual side-by-side, run each pane in its own process (its own render
+loop) — a 2×2 split covers both axes:
 
 ```bash
-PYTHONPATH=src python examples/compare.py flowview     # left pane
-PYTHONPATH=src python examples/compare.py container    # right pane
+PYTHONPATH=src python examples/compare.py flowview  static
+PYTHONPATH=src python examples/compare.py container static
+PYTHONPATH=src python examples/compare.py flowview  dynamic
+PYTHONPATH=src python examples/compare.py container dynamic
 ```
 
 ## Core ideas
