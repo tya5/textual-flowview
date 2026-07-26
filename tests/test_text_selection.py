@@ -6,7 +6,7 @@ import pytest
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.geometry import Offset
-from textual.selection import Selection
+from textual.selection import SELECT_ALL, Selection
 
 from textual_flowview import FlowModel, FlowView, Presentation
 
@@ -94,6 +94,41 @@ async def test_render_line_stamps_offset_meta() -> None:
         ]
         # first content cell is stamped with content coordinate (0, 0)
         assert (0, 0) in offsets
+
+
+@pytest.mark.asyncio
+async def test_select_all_spans_whole_list_not_just_viewport() -> None:
+    # SELECT_ALL == Selection(None, None) — what Ctrl+A produces. It must cover
+    # every content row, including rows below the visible viewport.
+    model: FlowModel[Row] = FlowModel()
+    for i in range(6):
+        model.append(Row(f"line-{i}"))
+    app = _app(model)
+    async with app.run_test(size=(20, 10)) as pilot:  # all 6 fit / get presented
+        await pilot.pause()
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        text, ending = view.get_selection(SELECT_ALL)
+        assert text == "\n".join(f"line-{i}" for i in range(6))
+        assert ending == "\n"
+        # and the real screen-level select-all path agrees
+        app.screen._select_all_in_widget(view)
+        assert app.screen.get_selected_text() == text
+
+
+@pytest.mark.asyncio
+async def test_selection_open_ended_bounds() -> None:
+    model: FlowModel[Row] = FlowModel()
+    for i in range(4):
+        model.append(Row(f"row{i}"))
+    app = _app(model)
+    async with app.run_test(size=(20, 10)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        # start=None -> from the top; end=None -> to the last row
+        assert view.get_selection(Selection(None, Offset(2, 1)))[0] == "row0\nro"
+        assert view.get_selection(Selection(Offset(2, 1), None))[0] == "w1\nrow2\nrow3"
 
 
 @pytest.mark.asyncio

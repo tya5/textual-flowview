@@ -534,6 +534,12 @@ implementing `get_selection`, so selections are stable across scrolling and use
 the standard `screen--selection` style. No configuration needed — it's on by
 default (`ALLOW_SELECT`).
 
+Selection is **virtual, not viewport-bound**: a drag (auto-scrolling past the
+edge) or <kbd>Ctrl</kbd>+<kbd>A</kbd> select-all spans the whole list, not just
+the painted rows. Because extraction reads presented content, rows that have
+never been on screen extract as the loading placeholder until they're
+presented — scrolling through them (as a drag does) presents them first.
+
 ## Examples
 
 ```bash

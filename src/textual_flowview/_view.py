@@ -757,12 +757,24 @@ class FlowView(ScrollView, Generic[T]):
         """Extract the text under ``selection`` (Textual's selection protocol).
 
         Selection y-coordinates are content rows (stamped by
-        :meth:`_decorate_line`), so extraction is stable across scrolling."""
+        :meth:`_decorate_line`), so extraction is stable across scrolling and
+        spans the whole virtual list, not just the painted viewport.
+
+        A ``None`` bound means "to the edge" — this is how **select-all**
+        (``Ctrl+A``) arrives: ``Selection(None, None)`` covers every row. Rows
+        that have never been presented (far off-screen) extract as the
+        placeholder until they are; scrolling through them (as a drag-select
+        does) presents them first."""
         width = self._content_width()
-        if width <= 0 or selection.start is None or selection.end is None:
+        if width <= 0:
             return None
+        last_row = self._viewport.total_height - 1
+        if last_row < 0:
+            return None
+        start_y = 0 if selection.start is None else max(0, selection.start.y)
+        end_y = last_row if selection.end is None else min(selection.end.y, last_row)
         parts: list[str] = []
-        for virtual_y in range(selection.start.y, selection.end.y + 1):
+        for virtual_y in range(start_y, end_y + 1):
             span = selection.get_span(virtual_y)
             if span is None:
                 continue
