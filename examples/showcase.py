@@ -1,7 +1,9 @@
 """textual-flowview showcase — a live AI-agent activity feed.
 
 Demonstrates: variable-height panels, a colored per-state gutter, streaming
-updates, independent body/gutter refresh, and sticky-bottom auto-follow.
+updates, independent body/gutter refresh, a contextual `separator` (a section
+divider drawn only when the activity kind changes), and sticky-bottom
+auto-follow.
 
 Run:  PYTHONPATH=src python examples/showcase.py
 Keys: q quit · r replay stream · c fold/unfold all · n next non-OK entry
@@ -58,6 +60,15 @@ KIND_COLOR = {
     "log": "grey62",
     "result": "green",
 }
+
+
+def kind_divider(above: Entry[Event], below: Entry[Event]) -> RenderableType | None:
+    """A section label drawn in the gap, but only where the activity kind
+    changes — a `separator` callable reading each entry's item."""
+    if above.item.kind == below.item.kind:
+        return None
+    colour = KIND_COLOR.get(below.item.kind, "grey42")
+    return Text(f"── {below.item.kind} ", style=colour)
 
 
 # --------------------------------------------------------------------------
@@ -223,6 +234,7 @@ class ShowcaseApp(App):
             presenter=ActivityPresenter(),
             decorator=ActivityGutter(),
             gutter_width=2,
+            separator=kind_divider,   # section label only when the kind changes
             anchor=Anchor.STICKY_BOTTOM,
             overscan=6,
         )
