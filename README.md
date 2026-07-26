@@ -197,8 +197,15 @@ FlowView(
 )
 ```
 
-Style the pinned rows via the `flowview--sticky-header` component class. See
-`examples/groups.py`.
+Style the pinned rows via the `flowview--sticky-header` component class — it's
+**unstyled by default** (FlowView ships no colours), so give it a background if
+you want the pinned header to stand out:
+
+```css
+FlowView > .flowview--sticky-header { background: $panel; }
+```
+
+See `examples/groups.py`.
 
 ## Minimap (scrollbar replacement)
 
@@ -344,7 +351,8 @@ presenter-drawn controls without turning on selection. This is independent of
 Textual's native **text** selection and copy (below), which stays available
 either way.
 
-Style the highlight via the `flowview--selected` component class:
+The highlight is the `flowview--selected` component class, which FlowView leaves
+**unstyled** — it holds no colours of its own, so define one to see a selection:
 
 ```css
 FlowView > .flowview--selected { background: $accent 30%; }

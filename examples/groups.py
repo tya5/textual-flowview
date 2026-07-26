@@ -106,6 +106,7 @@ class GroupsApp(App):
     Screen { background: $surface; }
     FlowView { height: 1fr; padding: 1 2; }
     FlowView > .flowview--selected { background: $accent 20%; }
+    FlowView > .flowview--sticky-header { background: $panel; }
     """
     BINDINGS = [
         ("q", "quit", "Quit"),

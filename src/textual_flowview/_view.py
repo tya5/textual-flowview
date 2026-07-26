@@ -101,15 +101,10 @@ class FlowView(ScrollView, Generic[T]):
     | :- | :- |
     | ``flowview--selected`` | The currently selected entry's rows. |
     | ``flowview--sticky-header`` | The pinned sticky header's rows. |
-    """
 
-    DEFAULT_CSS = """
-    FlowView > .flowview--selected {
-        background: $accent 30%;
-    }
-    FlowView > .flowview--sticky-header {
-        background: $panel;
-    }
+    FlowView ships **no colours of its own** — these classes are unstyled by
+    default, so nothing is painted until your app (or theme) gives them a style.
+    Text selection likewise defers to Textual's ``screen--selection``.
     """
 
     class Selected(Message):
