@@ -503,6 +503,7 @@ PYTHONPATH=src python examples/dashboard.py       # 400 live hosts, viewport-sco
 PYTHONPATH=src python examples/showcase.py       # live AI-agent activity feed
 PYTHONPATH=src python examples/groups.py          # collapsible groups + sticky headers
 PYTHONPATH=src python examples/intervention.py    # clickable in-flow selector
+PYTHONPATH=src python examples/gutters.py         # two gutters: unread (left) + age (right)
 PYTHONPATH=src python examples/progress.py        # Rich Spinner + ProgressBar in entries
 PYTHONPATH=src python examples/minimap.py         # minimap replacing the scrollbar
 PYTHONPATH=src python examples/chat.py            # streaming chat
