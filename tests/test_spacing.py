@@ -100,3 +100,68 @@ async def test_no_background_leaves_row_transparent() -> None:
         view = app.query_one(FlowView)
         strip = view.render_line(0)
         assert all(seg.style is None or seg.style.bgcolor is None for seg in strip)
+
+
+# -- separator (what's drawn in the spacing gap) ---------------------------
+
+
+@pytest.mark.asyncio
+async def test_string_separator_fills_the_gap() -> None:
+    model: FlowModel[Row] = FlowModel()
+    model.append(Row("first"))
+    model.append(Row("second"))
+    app = _app(model, spacing=1, separator="--------")
+    async with app.run_test(size=(30, 20)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        assert view.render_line(0).text.strip() == "first"
+        assert view.render_line(1).text.rstrip() == "--------"  # the gap row
+        assert view.render_line(2).text.strip() == "second"
+
+
+@pytest.mark.asyncio
+async def test_multiline_separator_spans_spacing_rows() -> None:
+    model: FlowModel[Row] = FlowModel()
+    model.append(Row("first"))
+    model.append(Row("second"))
+    app = _app(model, spacing=2, separator="<<<<\n>>>>")
+    async with app.run_test(size=(30, 20)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        assert view.render_line(1).text.rstrip() == "<<<<"
+        assert view.render_line(2).text.rstrip() == ">>>>"
+        assert view.render_line(3).text.strip() == "second"
+
+
+@pytest.mark.asyncio
+async def test_callable_separator_is_contextual() -> None:
+    # A divider only between an entry ending in "0" and the next.
+    model: FlowModel[Row] = FlowModel()
+    for i in range(3):
+        model.append(Row(f"r{i}"))
+
+    def sep(above, below):  # receives Entry, not the item
+        return Text("== div ==") if above.item.text.endswith("0") else None
+
+    app = _app(model, spacing=1, separator=sep)
+    async with app.run_test(size=(30, 20)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        assert view.render_line(1).text.rstrip() == "== div =="  # gap after r0
+        assert view.render_line(3).text.strip() == ""  # gap after r1: blank
+
+
+@pytest.mark.asyncio
+async def test_no_separator_gap_stays_blank() -> None:
+    model: FlowModel[Row] = FlowModel()
+    model.append(Row("a"))
+    model.append(Row("b"))
+    app = _app(model, spacing=1)  # separator defaults to None
+    async with app.run_test(size=(30, 20)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        assert view.render_line(1).text.strip() == ""

@@ -185,6 +185,25 @@ class Viewport(Generic[T]):
             return None  # in the spacer gap after this entry
         return index, local_y
 
+    def gap_at(self, y: int) -> tuple[int, int, int] | None:
+        """If ``y`` falls in the spacer gap *between* two entries, return
+        ``(above_index, below_index, gap_local_y)`` where ``gap_local_y`` is the
+        row within the gap (0-based, < spacing). ``None`` otherwise (inside an
+        entry, before the first, or past the last)."""
+        if self._spacing <= 0:
+            return None
+        prefix = self._prefix()
+        n = len(self._entries)
+        if n == 0 or y < 0 or y >= prefix[-1]:
+            return None
+        index = _upper_bound(prefix, y) - 1
+        if index < 0 or index >= n - 1:  # no gap after the last entry
+            return None
+        gap_local = y - prefix[index] - self._height_of(self._entries[index])
+        if gap_local < 0 or gap_local >= self._spacing:
+            return None  # actually inside the entry
+        return index, index + 1, gap_local
+
     def entries_between(self, top: int, bottom: int) -> list[Entry[T]]:
         """Entries whose rows intersect the virtual band ``[top, bottom)``.
 

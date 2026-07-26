@@ -249,6 +249,25 @@ The library never binds a key to an action for you — that's your app's call.
 to pack them). The gap is real layout — scrolling, hit-testing, and the minimap
 all account for it.
 
+Draw something **in** that gap with `separator`. `spacing` stays the source of
+truth for the gap's height; `separator` is what fills those rows — any Rich
+renderable (a plain string counts), or a `callable(above, below)` for
+context-dependent dividers (return `None` to leave a gap blank):
+
+```python
+from rich.rule import Rule
+
+FlowView(spacing=1, separator="────────")          # a rule between every entry
+FlowView(spacing=1, separator=Rule(style="grey30"))  # full-width, styled
+
+# contextual — a date divider only when the day changes (above/below are Entry):
+FlowView(spacing=1, separator=lambda above, below:
+    day_header(below.item) if above.item.day != below.item.day else None)
+```
+
+A multi-row separator just needs the matching `spacing` (e.g. `spacing=2` for a
+two-line divider).
+
 Give an entry a **full-row background** — painted edge to edge across the
 gutter, body, and trailing padding — via `Presentation.background`, so a
 message reads as one continuous coloured block (no hand-rolled full-width grid,

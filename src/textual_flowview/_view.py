@@ -164,6 +164,9 @@ class FlowView(ScrollView, Generic[T]):
         overscan: int = 4,
         read_ahead: int | None = None,
         spacing: int = 1,
+        separator: RenderableType
+        | Callable[[Entry[T], Entry[T]], RenderableType | None]
+        | None = None,
         animation_fps: float = 0,
         placeholder: RenderableType = "Loading...",
         name: str | None = None,
@@ -207,11 +210,21 @@ class FlowView(ScrollView, Generic[T]):
             spacing=spacing,
         )
         self._placeholder = placeholder
+        # Gap (in rows) between entries, and what's drawn in it. `spacing` is the
+        # authoritative gap height; `separator` (a renderable, or a
+        # callable(above, below) -> renderable | None) is painted into those
+        # rows. None -> a plain blank gap (the default).
+        self._spacing = max(0, spacing)
+        self._separator = separator
         # id -> (revision, width, strips)
         self._strip_cache: dict[int, tuple[int, int, list[Strip]]] = {}
         # (id, side) -> (decor_revision, width, height, strips)
         self._gutter_cache: dict[
             tuple[int, str], tuple[int, int, int, list[Strip]]
+        ] = {}
+        # (above.id, below.id) -> (above_rev, below_rev, width, height, strips)
+        self._separator_cache: dict[
+            tuple[int, int], tuple[int, int, int, int, list[Strip]]
         ] = {}
         # entry ids with an active presentation loop (one worker per entry).
         self._presenting: set[int] = set()
@@ -333,6 +346,7 @@ class FlowView(ScrollView, Generic[T]):
         self._layout.clear()
         self._strip_cache.clear()
         self._gutter_cache.clear()
+        self._separator_cache.clear()
         self._presenting.clear()
         self._viewport.set_entries([])
         self._refresh_layout(None)
@@ -655,10 +669,62 @@ class FlowView(ScrollView, Generic[T]):
 
         located = self._viewport.locate(virtual_y)
         if located is None:
-            return Strip.blank(content_width)
+            return self._separator_line(virtual_y, content_width)
         index, local_y = located
         line = self._compose_line(self._viewport.entries[index], local_y, content_width)
         return self._decorate_line(line, virtual_y)
+
+    def _separator_line(self, virtual_y: int, content_width: int) -> Strip:
+        """The row for a virtual_y that isn't inside an entry: a separator row
+        if it falls in a spacer gap and a separator is configured, else blank."""
+        if self._separator is None:
+            return Strip.blank(content_width)
+        gap = self._viewport.gap_at(virtual_y)
+        if gap is None:
+            return Strip.blank(content_width)
+        above_i, below_i, gap_local_y = gap
+        above = self._viewport.entries[above_i]
+        below = self._viewport.entries[below_i]
+        strips = self._separator_strips(above, below, content_width, self._spacing)
+        return (
+            strips[gap_local_y]
+            if 0 <= gap_local_y < len(strips)
+            else Strip.blank(content_width)
+        ).adjust_cell_length(content_width)
+
+    def _separator_strips(
+        self, above: Entry[T], below: Entry[T], width: int, height: int
+    ) -> list[Strip]:
+        key = (above.id, below.id)
+        cached = self._separator_cache.get(key)
+        if (
+            cached is not None
+            and cached[0] == above.revision
+            and cached[1] == below.revision
+            and cached[2] == width
+            and cached[3] == height
+        ):
+            return cached[4]
+        sep = self._separator
+        renderable: RenderableType | None
+        # A plain str / Text / Rule / Panel isn't callable; only a supplied
+        # separator *function* is, so callable() cleanly tells them apart.
+        if callable(sep):
+            renderable = sep(above, below)
+        else:
+            renderable = sep
+        if renderable is None:
+            strips = [Strip.blank(width) for _ in range(max(1, height))]
+        else:
+            strips = self._render_to_strips(renderable, width, height)
+        self._separator_cache[key] = (
+            above.revision,
+            below.revision,
+            width,
+            height,
+            strips,
+        )
+        return strips
 
     def _decorate_line(self, line: Strip, virtual_y: int) -> Strip:
         """Apply the text-selection highlight for this content row and stamp

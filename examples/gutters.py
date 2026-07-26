@@ -4,7 +4,8 @@ Each row has a body plus **two independent gutters**, one on each edge:
 
 * left gutter  — an unread dot (and a `!` for high priority), driven by the
   entry's metadata;
-* right gutter — the notification's age ("2m", "1h", "3d"), right-aligned.
+* right gutter — the notification's age ("2m", "1h", "3d"), right-aligned;
+* a `separator` (a `Rule`) drawn in the gap between rows.
 
 Both are `FlowDecorator`s and neither re-presents the body:
 
@@ -24,6 +25,7 @@ import time
 from dataclasses import dataclass
 
 from rich.console import Group, RenderableType
+from rich.rule import Rule
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.widgets import Footer, Header
@@ -129,6 +131,7 @@ class GuttersApp(App):
             gutter_width=3,
             right_decorator=AgeGutter(),
             right_gutter_width=5,
+            separator=Rule(style="grey23"),   # a hairline in the 1-row gap
             animation_fps=1,   # re-derive visible gutters ~1x/s so ages tick
         )
         yield self.view
