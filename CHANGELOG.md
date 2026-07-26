@@ -1,0 +1,63 @@
+# Changelog
+
+All notable changes to this project are documented here.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.3.0] - 2026-07-26
+
+First public release.
+
+### Added
+
+- **Core** — `FlowView[T]`, a virtualized flow of variable-height items built on
+  Textual's `ScrollView`. Paints only the visible rows (O(viewport)), mounting a
+  single widget regardless of item count. The widget is item-type-agnostic; only
+  a `FlowPresenter` knows about `T`.
+- **Model & entries** — `FlowModel[T]` with `append` / `insert` returning an
+  `Entry` handle; `entry.update()` (mutate + re-present), `set_item()`,
+  `set_state()`, `set_metadata()` / `update_metadata()`, `hide()` / `show()`,
+  `remove()`. Off-screen `entry.update()` is deferred until the entry scrolls in.
+- **Body & gutter split** — `FlowPresenter` fills the body, `FlowDecorator` fills
+  the gutter; state/metadata changes redraw only the gutter (no body re-present,
+  no reflow). Built-in `StateDecorator` + `EntryState`
+  (`DEFAULT/RUNNING/SUCCESS/ERROR/CANCELLED`).
+- **Two gutters** — an optional **right** gutter via `right_decorator` /
+  `right_gutter_width`, independent of the left one.
+- **Separators** — a `separator` drawn in the `spacing` gap between entries:
+  any renderable (a plain string works) or a `callable(above, below)` for
+  contextual dividers (return `None` to leave a gap blank).
+- **Scroll anchoring** — `Anchor.CURRENT` / `STICKY_BOTTOM` / `STICKY_TOP`.
+- **Sticky headers** — pin a group header while scrolling via `sticky_header`.
+- **Spacing & background** — inter-entry `spacing` (real layout) and a full-row
+  `Presentation.background` painted edge to edge.
+- **Dynamic content, viewport-scoped** — `animate_entry(entry, interval, cb)`,
+  `track_visibility(entry, on_show, on_hide)`, `refresh_gutter(entry)`, and the
+  `animation_fps` shorthand; all work is scoped to visible entries and released
+  off-screen. `AnimationHandle` / `VisibilityHandle` to stop them.
+- **Selection** — opt-in single-entry selection via `selectable=True`
+  (default `False`): click-to-select, `select()` / `clear_selection()` /
+  `selected`, and a `Selected` message. `Clicked` fires on every click (with the
+  in-entry position) for hit-testing presenter-drawn controls.
+- **Text selection & copy** — native Textual text selection across entries,
+  stable across scrolling (content-offset stamping); spans the whole virtual
+  list including **select-all** (`Ctrl+A`). Clipboard helpers `entry_text()` /
+  `copy_entry()`.
+- **Minimap** — `FlowMinimap`, a scrollbar-replacing state-heat overview.
+- **Search** — `find` / `find_next` / `find_previous` / `reveal`.
+- **Read-ahead** — directional prefetch (`read_ahead`) for smoother scrolling.
+- **Examples** — showcase, chat, groups, minimap, intervention, progress,
+  dashboard, gutters, and a `benchmark` / `compare` pair (with FPS meter).
+- **CI** — ruff + mypy (strict) + pytest matrix, wheel build.
+
+### Notes
+
+- `FlowView` ships **no colours of its own**: the `flowview--selected` and
+  `flowview--sticky-header` component classes are unstyled by default, and text
+  selection defers to Textual's `screen--selection`. Style them in your app.
+
+[Unreleased]: https://github.com/tya5/textual-flowview/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/tya5/textual-flowview/releases/tag/v0.3.0
