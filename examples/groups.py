@@ -126,6 +126,7 @@ class GroupsApp(App):
             presenter=PipelinePresenter(),
             decorator=PipelineGutter(),
             gutter_width=2,
+            selectable=True,   # click a group header to collapse/expand it
             sticky_header=lambda e: e.item.kind == "header",
         )
         yield Footer()

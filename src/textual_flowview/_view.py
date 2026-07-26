@@ -158,6 +158,7 @@ class FlowView(ScrollView, Generic[T]):
         gutter_width: int | None = None,
         right_decorator: FlowDecorator[T] | None = None,
         right_gutter_width: int | None = None,
+        selectable: bool = False,
         sticky_header: Callable[[Entry[T]], bool] | None = None,
         anchor: Anchor = Anchor.CURRENT,
         estimated_height: int = 1,
@@ -231,7 +232,9 @@ class FlowView(ScrollView, Generic[T]):
         # STICKY_BOTTOM/STICKY_TOP: are we currently glued to that edge?
         self._follow_bottom = anchor is Anchor.STICKY_BOTTOM
         self._follow_top = anchor is Anchor.STICKY_TOP
-        # Single-selection state, owned by the view (not the entry).
+        # Single-selection state, owned by the view (not the entry). Disabled by
+        # default: no click-to-select and no highlight until `selectable=True`.
+        self._selectable = selectable
         self._selected: Entry[T] | None = None
         # Per-entry visibility observers: acquire/release a user resource as the
         # entry enters/leaves the viewport (the general lifecycle hook).
@@ -400,8 +403,13 @@ class FlowView(ScrollView, Generic[T]):
     def select(self, entry: Entry[T] | None) -> None:
         """Select ``entry`` (or clear the selection with ``None``).
 
-        A no-op if it is already selected. Posts :class:`FlowView.Selected`.
+        A no-op if it is already selected, or if the view is not ``selectable``
+        (the default) — selection, including its highlight and the
+        :class:`Selected` message, is entirely off until ``selectable=True``.
+        Posts :class:`FlowView.Selected` when the selection changes.
         """
+        if not self._selectable:
+            return
         if entry is not None and not entry.alive:
             return
         if self._selected is entry:

@@ -319,19 +319,30 @@ FlowView(model=..., presenter=..., overscan=4, read_ahead=None)
 
 ## Selection
 
-Single-entry click selection (v0.3). The selection lives on the view, not the
+Single-entry selection is **opt-in** — pass `selectable=True`. It's off by
+default, so a plain feed never highlights (or steals a click) unexpectedly. When
+enabled, a click selects the entry; the selection lives on the view, not the
 item, and posts a message you can react to:
 
 ```python
+flow = FlowView(model=..., presenter=..., selectable=True)
+
 class MyApp(App):
     def on_flow_view_selected(self, event: FlowView.Selected) -> None:
         entry = event.entry            # the selected Entry, or None
         ...
 
-flow.select(entry)         # programmatic
+flow.select(entry)         # programmatic (a no-op unless selectable=True)
 flow.clear_selection()
 flow.selected              # -> Entry | None
 ```
+
+With `selectable=False` (the default) selection is entirely off — no highlight,
+no `Selected` message, and `select()` is a no-op. Clicks still post
+`FlowView.Clicked` (with the in-entry position) so you can hit-test
+presenter-drawn controls without turning on selection. This is independent of
+Textual's native **text** selection and copy (below), which stays available
+either way.
 
 Style the highlight via the `flowview--selected` component class:
 

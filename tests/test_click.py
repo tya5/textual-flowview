@@ -92,3 +92,34 @@ async def test_click_on_sticky_header_targets_the_header() -> None:
         await pilot.pause()
         entry, _, _ = app.clicks[-1]
         assert entry is header
+
+
+@pytest.mark.asyncio
+async def test_not_selectable_by_default() -> None:
+    model: FlowModel[Row] = FlowModel()
+    es = [model.append(Row(f"row-{i}")) for i in range(4)]
+    app = ClickApp(model)  # default: selectable=False
+    async with app.run_test(size=(30, 12)) as pilot:
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        await pilot.click(FlowView, offset=(2, 0))
+        await pilot.pause()
+        assert view.selected is None  # click reported, but nothing selected
+        assert app.clicks  # Clicked still fired
+        view.select(es[1])  # programmatic select is a no-op too
+        assert view.selected is None
+
+
+@pytest.mark.asyncio
+async def test_selectable_true_selects_on_click() -> None:
+    model: FlowModel[Row] = FlowModel()
+    es = [model.append(Row(f"row-{i}")) for i in range(4)]
+    app = ClickApp(model, selectable=True)
+    async with app.run_test(size=(30, 12)) as pilot:
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        await pilot.click(FlowView, offset=(2, 1))  # second row
+        await pilot.pause()
+        assert view.selected is es[1]
+        view.clear_selection()
+        assert view.selected is None

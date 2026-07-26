@@ -240,6 +240,7 @@ class ShowcaseApp(App):
             decorator=ActivityGutter(),
             gutter_width=2,
             separator=kind_divider,   # section label only when the kind changes
+            selectable=True,          # click an item to select (and fold) it
             anchor=Anchor.STICKY_BOTTOM,
             overscan=6,
         )
