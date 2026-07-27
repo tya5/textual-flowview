@@ -246,3 +246,62 @@ async def test_both_gutters_are_independent() -> None:
         assert line0[:2] == "LL"
         assert line0[-3:] == "RRR"
         assert "work" in line0  # body still drawn between the gutters
+
+
+@pytest.mark.asyncio
+async def test_gutter_visibility_toggles_independently() -> None:
+    model: FlowModel[Job] = FlowModel()
+    model.append(Job("work"))
+    app = _app(
+        model,
+        CountingPresenter(),
+        decorator=MarkDecorator("L"),
+        gutter_width=2,
+        right_decorator=MarkDecorator("R"),
+        right_gutter_width=3,
+    )
+    async with app.run_test(size=(40, 10)) as pilot:
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        full = view._content_width()
+        assert view.left_gutter_visible and view.right_gutter_visible
+        assert view._body_width() == full - 2 - 3
+
+        # hide the left gutter -> its width goes back to the body
+        view.hide_gutter("left")
+        await pilot.pause()
+        assert view.left_gutter_visible is False
+        assert view._body_width() == full - 3  # only the right gutter remains
+        line = view.render_line(0).text
+        assert line[:1] != "L"
+        assert line[-3:] == "RRR"
+
+        # hide the right gutter too -> body spans the whole width
+        view.hide_gutter("right")
+        await pilot.pause()
+        assert view._body_width() == full
+        assert view.render_line(0).text.rstrip()[-1:] != "R"
+
+        # toggle the left back on
+        assert view.toggle_gutter("left") is True
+        await pilot.pause()
+        assert view._body_width() == full - 2
+        assert view.render_line(0).text[:2] == "LL"
+
+        # configured widths are untouched by hiding
+        assert view._gutter_width == 2 and view._right_gutter_width == 3
+
+
+@pytest.mark.asyncio
+async def test_set_gutter_visible_same_state_is_noop() -> None:
+    model: FlowModel[Job] = FlowModel()
+    model.append(Job("work"))
+    presenter = CountingPresenter()
+    app = _app(model, presenter, decorator=MarkDecorator("L"), gutter_width=2)
+    async with app.run_test(size=(40, 10)) as pilot:
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        calls = presenter.calls
+        view.set_gutter_visible("left", True)  # already visible
+        await pilot.pause()
+        assert presenter.calls == calls  # no reflow / re-present

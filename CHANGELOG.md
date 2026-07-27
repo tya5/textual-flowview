@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Toggle each gutter's visibility at runtime: `show_gutter(side)`,
+  `hide_gutter(side)`, `toggle_gutter(side)`, `set_gutter_visible(side, visible)`,
+  and the `left_gutter_visible` / `right_gutter_visible` properties. A hidden
+  gutter keeps its configured width and hands it back to the body (the list
+  reflows). `examples/gutters.py` binds `[` / `]` to toggle them.
+
 ## [0.3.0] - 2026-07-26
 
 First public release.

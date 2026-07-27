@@ -16,7 +16,8 @@ Both are `FlowDecorator`s and neither re-presents the body:
   and no body re-present.
 
 Run:  PYTHONPATH=src python examples/gutters.py
-Keys: click a row = mark read · r = mark all read · j/k scroll · q quit
+Keys: click a row = mark read · r = mark all read · [ / ] toggle left/right
+      gutter · j/k scroll · q quit
 """
 
 from __future__ import annotations
@@ -113,6 +114,8 @@ class GuttersApp(App):
     CSS = "FlowView { height: 1fr; padding: 0 1; }"
     BINDINGS = [
         ("r", "read_all", "Mark all read"),
+        ("left_square_bracket", "toggle_left", "Toggle left gutter"),
+        ("right_square_bracket", "toggle_right", "Toggle right gutter"),
         ("j", "down", "Down"),
         ("k", "up", "Up"),
         ("q", "quit", "Quit"),
@@ -165,6 +168,14 @@ class GuttersApp(App):
             if entry.metadata.get("unread"):
                 entry.set_metadata("unread", False)
         self._refresh_unread()
+
+    def action_toggle_left(self) -> None:
+        on = self.view.toggle_gutter("left")
+        self.notify(f"left gutter {'shown' if on else 'hidden'}")
+
+    def action_toggle_right(self) -> None:
+        on = self.view.toggle_gutter("right")
+        self.notify(f"right gutter {'shown' if on else 'hidden'}")
 
     def action_down(self) -> None:
         self.view.scroll_relative(y=3)

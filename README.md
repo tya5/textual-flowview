@@ -108,6 +108,17 @@ Each row is split into a **gutter** and a **body**:
   left and a timestamp or a scrollbar-style indicator on the right). The two are
   fully independent; the body simply gets whatever width is left over.
 
+Each gutter can be **shown or hidden at runtime** — the configured width is
+remembered and handed back to the body while hidden (the list reflows):
+
+```python
+flow.hide_gutter("right")          # or "left"
+flow.show_gutter("right")
+flow.toggle_gutter("left")         # -> new visibility (bool)
+flow.set_gutter_visible("left", False)
+flow.left_gutter_visible           # -> bool   (also right_gutter_visible)
+```
+
 They update **independently**. Changing an entry's state or metadata redraws
 only the gutter — the body is *not* re-presented and nothing re-layouts, so
 high-frequency status updates stay cheap:

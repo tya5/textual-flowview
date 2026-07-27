@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, ClassVar, Generic, TypeVar
+from typing import Any, ClassVar, Generic, Literal, TypeVar
 
 from rich.console import Console, RenderableType
 from rich.panel import Panel
@@ -197,6 +197,10 @@ class FlowView(ScrollView, Generic[T]):
         if right_gutter_width is None:
             right_gutter_width = 2 if right_decorator is not None else 0
         self._right_gutter_width = max(0, right_gutter_width)
+        # Configured widths above are fixed; visibility is toggled at runtime
+        # (show_gutter/hide_gutter). Effective width = width if visible else 0.
+        self._gutter_visible = True
+        self._right_gutter_visible = True
         self._layout: FlowLayout[T] = FlowLayout()
         self._viewport: Viewport[T] = Viewport(
             self._layout,
@@ -467,6 +471,55 @@ class FlowView(ScrollView, Generic[T]):
             if observer.shown and observer.on_hide is not None:
                 observer.on_hide(observer.entry)
 
+    # -- gutter visibility -------------------------------------------------
+
+    @property
+    def left_gutter_visible(self) -> bool:
+        """Whether the left gutter is currently shown."""
+        return self._gutter_visible
+
+    @property
+    def right_gutter_visible(self) -> bool:
+        """Whether the right gutter is currently shown."""
+        return self._right_gutter_visible
+
+    def set_gutter_visible(self, side: Literal["left", "right"], visible: bool) -> None:
+        """Show or hide the left or right gutter at runtime.
+
+        The gutter's configured width is preserved; hiding it hands that width
+        back to the body and reflows (the body width changes, like a resize).
+        A no-op if that side is already in the requested state."""
+        flag = "_gutter_visible" if side == "left" else "_right_gutter_visible"
+        if getattr(self, flag) is visible:
+            return
+        setattr(self, flag, visible)
+        self._relayout_for_gutter_change()
+
+    def show_gutter(self, side: Literal["left", "right"] = "left") -> None:
+        """Show the ``side`` gutter (default ``"left"``)."""
+        self.set_gutter_visible(side, True)
+
+    def hide_gutter(self, side: Literal["left", "right"] = "left") -> None:
+        """Hide the ``side`` gutter (default ``"left"``)."""
+        self.set_gutter_visible(side, False)
+
+    def toggle_gutter(self, side: Literal["left", "right"] = "left") -> bool:
+        """Flip the ``side`` gutter's visibility; returns the new state."""
+        flag = "_gutter_visible" if side == "left" else "_right_gutter_visible"
+        self.set_gutter_visible(side, not getattr(self, flag))
+        return bool(getattr(self, flag))
+
+    def _relayout_for_gutter_change(self) -> None:
+        # Body width changed: re-present at the new width and reflow (mirrors
+        # on_resize). Before mount / with no width, geometry syncs on its own.
+        if not self.is_mounted or self._content_width() <= 0:
+            return
+        state = self._capture()
+        self._sync_geometry()
+        self._strip_cache.clear()
+        self._refresh_layout(state)
+        self._present_visible()
+
     # -- per-entry animation (a timer built on track_visibility) -----------
 
     def refresh_gutter(self, entry: Entry[T]) -> None:
@@ -638,7 +691,7 @@ class FlowView(ScrollView, Generic[T]):
         """Map a screen cell ``(x, y)`` in the content area to the entry drawn
         there and the position within that entry's body — accounting for a
         pinned sticky header overlaying the top rows."""
-        local_x = x - self._gutter_width
+        local_x = x - self._left_gutter_w()
         scroll_y = int(self.scroll_offset.y)
 
         sticky = self._sticky_state(scroll_y)
@@ -798,8 +851,8 @@ class FlowView(ScrollView, Generic[T]):
     def _compose_line(
         self, entry: Entry[T], local_y: int, content_width: int, *, sticky: bool = False
     ) -> Strip:
-        left_w = self._gutter_width
-        right_w = self._right_gutter_width
+        left_w = self._left_gutter_w()
+        right_w = self._right_gutter_w()
         body_w = max(1, content_width - left_w - right_w)
         body_strips = self._entry_strips(entry, body_w)
         height = len(body_strips)
@@ -1003,10 +1056,18 @@ class FlowView(ScrollView, Generic[T]):
         region = self.scrollable_content_region
         return region.height if region.height > 0 else self.size.height
 
+    def _left_gutter_w(self) -> int:
+        """Effective left-gutter width — the configured width, or 0 when hidden."""
+        return self._gutter_width if self._gutter_visible else 0
+
+    def _right_gutter_w(self) -> int:
+        """Effective right-gutter width — the configured width, or 0 when hidden."""
+        return self._right_gutter_width if self._right_gutter_visible else 0
+
     def _body_width(self) -> int:
         """Width available to the presenter (content width minus both gutters)."""
         return max(
-            1, self._content_width() - self._gutter_width - self._right_gutter_width
+            1, self._content_width() - self._left_gutter_w() - self._right_gutter_w()
         )
 
     def _sync_geometry(self) -> None:
