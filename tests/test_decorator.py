@@ -293,6 +293,67 @@ async def test_gutter_visibility_toggles_independently() -> None:
 
 
 @pytest.mark.asyncio
+async def test_body_width_property_tracks_gutters() -> None:
+    # Public accessor for the width the presenter actually gets — the number
+    # region.width can't give you (it doesn't change with gutter config).
+    model: FlowModel[Job] = FlowModel()
+    model.append(Job("work"))
+    app = _app(
+        model,
+        CountingPresenter(),
+        decorator=MarkDecorator("L"),
+        gutter_width=2,
+        right_decorator=MarkDecorator("R"),
+        right_gutter_width=3,
+    )
+    async with app.run_test(size=(40, 10)) as pilot:
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        full = view._content_width()
+        assert view.body_width == full - 2 - 3
+        assert view.left_gutter_effective_width == 2
+        assert view.right_gutter_effective_width == 3
+        # hiding a gutter gives the width back to the body, observably
+        view.hide_gutter("left")
+        await pilot.pause()
+        assert view.left_gutter_effective_width == 0
+        assert view.body_width == full - 3
+
+
+@pytest.mark.asyncio
+async def test_decorate_height_is_post_wrap() -> None:
+    # The height passed to decorate() is the body's rendered row count at the
+    # current width — so a multi-line gutter can trust it.
+    seen: list[tuple[int, int]] = []
+
+    class TallPresenter:
+        async def present(self, item: Job, width: int) -> Presentation:
+            # declare a height that depends on width, like a real wrapping body
+            rows = max(2, 200 // max(1, width))
+            return Presentation(
+                height=rows, renderable=Text("\n".join(item.text for _ in range(rows)))
+            )
+
+    class HeightCapture:
+        def decorate(self, entry: object, width: int, height: int) -> Text:
+            seen.append((width, height))
+            return Text("\n".join("|" for _ in range(max(1, height))))
+
+    model: FlowModel[Job] = FlowModel()
+    model.append(Job("row"))
+    app = _app(model, TallPresenter(), decorator=HeightCapture(), gutter_width=1)
+    async with app.run_test(size=(60, 20)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        body_w = view.body_width
+        # the height decorate saw equals the body's actual rendered line count
+        rendered = len(view._entry_strips(view._viewport.entries[0], body_w))
+        assert seen  # decorate ran
+        assert seen[-1][1] == rendered
+
+
+@pytest.mark.asyncio
 async def test_set_gutter_visible_same_state_is_noop() -> None:
     model: FlowModel[Job] = FlowModel()
     model.append(Job("work"))

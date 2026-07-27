@@ -117,7 +117,14 @@ flow.show_gutter("right")
 flow.toggle_gutter("left")         # -> new visibility (bool)
 flow.set_gutter_visible("left", False)
 flow.left_gutter_visible           # -> bool   (also right_gutter_visible)
+
+flow.body_width                    # width the presenter gets (both gutters removed)
+flow.left_gutter_effective_width   # cells the gutter takes now (0 when hidden)
 ```
+
+`body_width` is the width passed to `FlowPresenter.present` — it shrinks and
+grows with the gutters, unlike `region.width` (the whole content width). Assert
+against it when you need to verify a gutter actually gave its width back.
 
 They update **independently**. Changing an entry's state or metadata redraws
 only the gutter — the body is *not* re-presented and nothing re-layouts, so

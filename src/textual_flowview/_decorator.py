@@ -28,6 +28,23 @@ class FlowDecorator(Protocol[T]):
     entry's :attr:`~Entry.state`, :attr:`~Entry.metadata`, and item, and
     returns a renderable sized to ``width`` (the gutter width) by ``height``
     (the entry's body height in rows).
+
+    Two properties of the contract are load-bearing for multi-line gutters:
+
+    * ``height`` is **post-wrap** — the body's presented height *at the current
+      width* (the row count the body actually occupies now), not a fixed
+      declared height: the presenter re-presents when the width changes, so a
+      decorator always sees the up-to-date count and multi-line gutters line up.
+      (During the brief window before an entry is presented, ``height`` is the
+      placeholder's line count; because the gutter cache is keyed on height,
+      ``decorate`` is re-invoked once the real presentation lands, so the final
+      state is correct — but a decorator with side effects may run more than
+      once with different heights.)
+    * The returned renderable is **clamped to ``width``** (via
+      ``Strip.adjust_cell_length``): content wider than ``width`` — easy to hit
+      with double-width or East-Asian-ambiguous glyphs, where cell count differs
+      from character count — is **silently truncated**, never overflowed. Size
+      to ``width`` in *cells* to avoid losing content.
     """
 
     def decorate(self, entry: Entry[T], width: int, height: int) -> RenderableType: ...

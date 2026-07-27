@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Public read-only `body_width` (the width passed to the presenter — content
+  width minus both gutters, hidden counting as 0), plus
+  `left_gutter_effective_width` / `right_gutter_effective_width`. Lets consumers
+  assert gutter width accounting, which `region.width` cannot observe (#2).
+
+### Documentation
+
+- `FlowDecorator.decorate` now documents two load-bearing contract properties:
+  `height` is the body's post-wrap presented height at the current width, and
+  the returned renderable is clamped to `width` (over-wide content is silently
+  truncated, never overflowed) (#3).
+
 ## [0.4.0] - 2026-07-27
 
 ### Added

@@ -483,6 +483,28 @@ class FlowView(ScrollView, Generic[T]):
         """Whether the right gutter is currently shown."""
         return self._right_gutter_visible
 
+    @property
+    def body_width(self) -> int:
+        """Width currently available to the presenter — content width minus both
+        gutters, counting a hidden gutter as 0.
+
+        This is exactly the ``width`` passed to :meth:`FlowPresenter.present`,
+        and it shrinks or grows as gutters are configured, hidden, or shown.
+        Prefer it over ``region.width`` (the whole content width, which does
+        *not* change with gutter configuration) when asserting gutter width
+        accounting."""
+        return self._body_width()
+
+    @property
+    def left_gutter_effective_width(self) -> int:
+        """The left gutter's current width in cells (0 when hidden)."""
+        return self._left_gutter_w()
+
+    @property
+    def right_gutter_effective_width(self) -> int:
+        """The right gutter's current width in cells (0 when hidden)."""
+        return self._right_gutter_w()
+
     def set_gutter_visible(self, side: Literal["left", "right"], visible: bool) -> None:
         """Show or hide the left or right gutter at runtime.
 
