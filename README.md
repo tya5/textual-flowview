@@ -326,6 +326,30 @@ For a **newest-on-top** feed, prepend with `model.insert(0, item)` and use
 they scroll down. `CURRENT` also works for prepend, but keeps the current
 position instead of following the top.
 
+## Infinite scroll (lazy-load history)
+
+FlowView posts `ReachedTop` / `ReachedBottom` when scrolling brings an edge
+within `reach_threshold` rows — handle them to lazy-load more. They're
+**edge-triggered**: fire once on approach, re-arm when you scroll away.
+
+Prepend a page with `model.insert_many(0, items)` (or `extend` at the bottom):
+one batch is **one reflow**, and it **preserves the scroll position** — the line
+you're reading stays put while older items appear above, no jump. (`insert` /
+`append` preserve position too; `insert_many` just does a page in a single
+reflow.)
+
+```python
+flow = FlowView(model=log, presenter=..., reach_threshold=2,
+                anchor=Anchor.STICKY_BOTTOM)
+
+class MyApp(App):
+    def on_flow_view_reached_top(self, event: FlowView.ReachedTop) -> None:
+        older = fetch_older_page()          # a real app would await this
+        log.insert_many(0, older)           # one reflow, position kept
+```
+
+See `examples/infinite.py` (a log that pages in older lines as you scroll up).
+
 ## Smooth scrolling (overscan & read-ahead)
 
 FlowView only presents what's on (or near) screen. Two knobs control how much
@@ -574,6 +598,7 @@ PYTHONPATH=src python examples/groups.py          # collapsible groups + sticky 
 PYTHONPATH=src python examples/intervention.py    # clickable in-flow selector
 PYTHONPATH=src python examples/gutters.py         # two gutters: unread (left) + age (right)
 PYTHONPATH=src python examples/scroll_anim.py     # animated jumps, redirect, stop-in-place
+PYTHONPATH=src python examples/infinite.py        # infinite scroll: lazy-load older history
 PYTHONPATH=src python examples/progress.py        # Rich Spinner + ProgressBar in entries
 PYTHONPATH=src python examples/minimap.py         # minimap replacing the scrollbar
 PYTHONPATH=src python examples/chat.py            # streaming chat

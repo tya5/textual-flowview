@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from typing import Generic, Protocol, TypeVar
 
 from ._entry import Entry
@@ -18,6 +18,7 @@ class ModelListener(Protocol[T]):
     """
 
     def on_flow_insert(self, entry: Entry[T], index: int) -> None: ...
+    def on_flow_insert_many(self, entries: list[Entry[T]], index: int) -> None: ...
     def on_flow_update(self, entry: Entry[T]) -> None: ...
     def on_flow_remove(self, entry: Entry[T], index: int) -> None: ...
     def on_flow_clear(self) -> None: ...
@@ -62,6 +63,32 @@ class FlowModel(Generic[T]):
         if self._listener is not None:
             self._listener.on_flow_insert(entry, index)
         return entry
+
+    def insert_many(self, index: int, items: Iterable[T]) -> list[Entry[T]]:
+        """Insert several items at ``index`` as **one** operation, returning
+        their handles in order.
+
+        One notification, so the view reflows **once** instead of once per item
+        — the primitive for infinite-scroll load-more, where a handler prepends a
+        whole page (pair it with :class:`FlowView.ReachedTop`). Prepending above
+        the viewport keeps the scroll position either way; ``insert_many`` just
+        does it in a single reflow."""
+        items = list(items)
+        index = max(0, min(index, len(self._entries)))
+        entries: list[Entry[T]] = []
+        for offset, item in enumerate(items):
+            entry = Entry(self, self._next_id, item)
+            self._next_id += 1
+            self._entries.insert(index + offset, entry)
+            entries.append(entry)
+        if entries and self._listener is not None:
+            self._listener.on_flow_insert_many(entries, index)
+        return entries
+
+    def extend(self, items: Iterable[T]) -> list[Entry[T]]:
+        """Append several items at the end as one operation (batch
+        :meth:`append`); see :meth:`insert_many`."""
+        return self.insert_many(len(self._entries), items)
 
     def clear(self) -> None:
         """Remove every item. All existing entries become dead."""

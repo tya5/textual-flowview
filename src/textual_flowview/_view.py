@@ -144,6 +144,35 @@ class FlowView(ScrollView, Generic[T]):
         def control(self) -> FlowView[Any]:
             return self.flow_view
 
+    class ReachedTop(Message):
+        """Posted when scrolling brings the top edge within ``reach_threshold``
+        rows. Handle it to lazy-load older items (prepend them with
+        ``model.insert(0, ...)`` — the view keeps its position). Fires once per
+        approach; scrolling away from the edge re-arms it.
+        """
+
+        def __init__(self, flow_view: FlowView[Any]) -> None:
+            self.flow_view = flow_view
+            super().__init__()
+
+        @property
+        def control(self) -> FlowView[Any]:
+            return self.flow_view
+
+    class ReachedBottom(Message):
+        """Posted when scrolling brings the bottom edge within
+        ``reach_threshold`` rows. Handle it to lazy-load newer items (append
+        them). Fires once per approach; scrolling away re-arms it.
+        """
+
+        def __init__(self, flow_view: FlowView[Any]) -> None:
+            self.flow_view = flow_view
+            super().__init__()
+
+        @property
+        def control(self) -> FlowView[Any]:
+            return self.flow_view
+
     def __init__(
         self,
         *,
@@ -159,6 +188,7 @@ class FlowView(ScrollView, Generic[T]):
         estimated_height: int = 1,
         overscan: int = 4,
         read_ahead: int | None = None,
+        reach_threshold: int = 0,
         spacing: int = 1,
         separator: RenderableType
         | Callable[[Entry[T], Entry[T]], RenderableType | None]
@@ -182,6 +212,12 @@ class FlowView(ScrollView, Generic[T]):
         # Rows to pre-present *ahead of the scroll direction*, beyond the static
         # overscan band. None -> one viewport height. 0 disables read-ahead.
         self._read_ahead = read_ahead
+        # Infinite scroll: post ReachedTop/ReachedBottom when the edge comes
+        # within this many rows. Edge-triggered (fires once per approach), with
+        # a re-arm flag per side so a handler that loads more isn't spammed.
+        self._reach_threshold = max(0, reach_threshold)
+        self._reached_top_signaled = False
+        self._reached_bottom_signaled = False
         # >0: shorthand that auto-drives every visible entry's gutter at this
         # frame rate (like refresh_gutter on each, no per-entry registration) so
         # a time-based decorator animates on its own. 0 disables it.
@@ -293,10 +329,42 @@ class FlowView(ScrollView, Generic[T]):
             # Follow only while parked at the top; scrolling down releases it.
             self._follow_top = int(new_value) <= 0
         self._present_visible()
+        self._check_edges()
+
+    def _check_edges(self) -> None:
+        """Post ReachedTop / ReachedBottom when an edge is within
+        ``reach_threshold``. Edge-triggered: fires once on approach, re-arms on
+        retreat, so a handler that loads more items isn't called repeatedly."""
+        if not self.is_mounted or self._content_width() <= 0:
+            return
+        if not self._viewport.entries:
+            return
+        y = round(self.scroll_offset.y)
+        thr = self._reach_threshold
+        near_top = y <= thr
+        near_bottom = y >= self.max_scroll_y - thr
+        if near_top and not self._reached_top_signaled:
+            self._reached_top_signaled = True
+            self.post_message(self.ReachedTop(self))
+        if not near_top:
+            self._reached_top_signaled = False
+        if near_bottom and not self._reached_bottom_signaled:
+            self._reached_bottom_signaled = True
+            self.post_message(self.ReachedBottom(self))
+        if not near_bottom:
+            self._reached_bottom_signaled = False
 
     # -- ModelListener (internal, called on the message loop) -------------
 
     def on_flow_insert(self, entry: Entry[T], index: int) -> None:
+        state = self._capture()
+        self._viewport.set_entries(self._visible_entries())
+        self._refresh_layout(state)
+
+    def on_flow_insert_many(self, entries: list[Entry[T]], index: int) -> None:
+        # One capture/restore + one reflow for the whole batch (repeated single
+        # inserts each reflow; position is preserved either way, this is just the
+        # cheaper path for a page of load-more items).
         state = self._capture()
         self._viewport.set_entries(self._visible_entries())
         self._refresh_layout(state)
@@ -1180,6 +1248,7 @@ class FlowView(ScrollView, Generic[T]):
             self.scroll_to(y=target, animate=False)
         self.refresh()
         self._sync_visibility()
+        self._check_edges()
 
     def _present_visible(self) -> None:
         """Kick off presentation for the visible range plus the overscan band,

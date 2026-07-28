@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Infinite scroll: `FlowView` posts `ReachedTop` / `ReachedBottom` when an edge
+  comes within `reach_threshold` rows (edge-triggered, re-arms on retreat) so a
+  handler can lazy-load more.
+- `FlowModel.insert_many(index, items)` and `extend(items)` — batch inserts that
+  reflow once. Prepending a page of older items above the viewport keeps the
+  scroll position (the row you're reading stays put). See `examples/infinite.py`
+  and `docs/feature-gap-analysis.md`.
 - `examples/scroll_anim.py` — demonstrates the animated jump API: smooth jumps
   to any entry / the ends, mid-flight redirect (a fresh jump supersedes), and
   `stop_scroll_animation()` to halt in place.
