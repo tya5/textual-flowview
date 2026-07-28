@@ -1,0 +1,85 @@
+"""textual-flowview keyboard-cursor demo.
+
+`cursor=True` turns on an opt-in keyboard cursor: ↑/↓ move a highlighted entry
+item-by-item (the view follows), PageUp/PageDown move by a page, Home/End jump to
+the first/last entry, and Enter/Space activate it (`FlowView.Activated`).
+
+These are **focus-scoped, overridable defaults** mapped onto public actions —
+FlowView doesn't claim product-level keybindings. The cursor highlight has **no
+colour of its own**; style `flowview--cursor` in your app (done in CSS below).
+
+Run:  PYTHONPATH=src python examples/cursor.py
+Keys: ↑/↓ move · PgUp/PgDn page · Home/End ends · Enter/Space activate · q quit
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from rich.text import Text
+from textual.app import App, ComposeResult
+from textual.widgets import Footer, Header
+
+from textual_flowview import FlowModel, FlowView, Presentation
+
+
+@dataclass
+class Command:
+    name: str
+    detail: str
+
+
+class CommandPresenter:
+    async def present(self, item: Command, width: int) -> Presentation:
+        line = Text.assemble((f"  {item.name:<18}", "bold"), (item.detail, "grey54"))
+        return Presentation(height=1, renderable=line)
+
+
+COMMANDS = [
+    Command(f"command-{i:02d}", detail=f"does thing #{i} to the workspace")
+    for i in range(60)
+]
+
+
+class CursorApp(App):
+    TITLE = "textual-flowview"
+    SUB_TITLE = "keyboard cursor — ↑/↓ move · Enter activate"
+    # The cursor highlight is unstyled by default (FlowView ships no colours);
+    # give flowview--cursor a look here.
+    CSS = """
+    FlowView { height: 1fr; padding: 0 1; }
+    FlowView > .flowview--cursor { background: $accent 30%; }
+    """
+    BINDINGS = [("q", "quit", "Quit")]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.commands: FlowModel[Command] = FlowModel()
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        self.view: FlowView[Command] = FlowView(
+            model=self.commands,
+            presenter=CommandPresenter(),
+            spacing=0,
+            estimated_height=1,
+            cursor=True,   # opt-in keyboard cursor
+        )
+        yield self.view
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self.commands.extend(COMMANDS)
+        self.view.focus()
+        self.view.cursor_first()
+
+    def on_flow_view_highlighted(self, event: FlowView.Highlighted) -> None:
+        if event.entry is not None:
+            self.sub_title = f"cursor on {event.entry.item.name}"
+
+    def on_flow_view_activated(self, event: FlowView.Activated) -> None:
+        self.notify(f"activated {event.entry.item.name}")
+
+
+if __name__ == "__main__":
+    CursorApp().run()

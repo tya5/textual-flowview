@@ -23,7 +23,7 @@ timelines, logs, notifications, mail, AI agent transcripts).
 | Two independent gutters (toggle, effective-width introspection), separators | ✅ |
 | **Infinite scroll — edge-reached callbacks to load more** | ✅ implemented — `ReachedTop` / `ReachedBottom` + `reach_threshold` (#1) |
 | **Prepend older items without losing scroll position** | ✅ works via anchor capture/restore; `insert_many` / `extend` batch it into one reflow; tested + documented (#2) |
-| Keyboard cursor navigation (↑↓/PgUp/PgDn/Home/End highlighted cursor, distinct from selection) | ✗ missing (by design FlowView binds no keys) |
+| Keyboard cursor navigation (↑↓/PgUp/PgDn/Home/End highlighted cursor, distinct from selection) | ✅ implemented — opt-in `cursor=True`, exposed as actions + overridable focus-scoped defaults (#3) |
 | `scroll_to` alignment (center/end) and index-based `scroll_to_index` | ✗ missing (only top / ensure-visible) |
 | Initial scroll position (`initialTopMostItemIndex` equivalent) | ✗ missing |
 | Empty-state renderable (shown when the list has no entries) | ✗ missing (only a per-entry loading placeholder) |
@@ -49,9 +49,10 @@ timelines, logs, notifications, mail, AI agent transcripts).
 
 **Medium**
 
-3. **Opt-in keyboard cursor navigation** (↑↓/PgUp/PgDn/Home/End with an inverse
-   cursor, separate from selection). Strongly expected of terminal lists; kept
-   opt-in to preserve the "FlowView binds no keys" stance.
+3. ~~Opt-in keyboard cursor navigation~~ — **done** (`cursor=True`). Exposed as
+   public actions/methods + messages; keys are focus-scoped, overridable
+   defaults so the product keeps keybinding policy (arrows just scroll when
+   `cursor=False`).
 4. **Scroll alignment + index jumps**: `scroll_to_entry(..., align="center"|"end")`,
    `scroll_to_index(i)`, and an `initial_index` for the starting position.
 5. **Empty-state**: a renderable shown when the list has zero entries.

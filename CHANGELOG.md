@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Opt-in keyboard cursor (`cursor=True`): ↑/↓ move a highlighted "current entry"
+  item-by-item (the view follows), PageUp/PageDown by a page, Home/End to the
+  ends, Enter/Space activate it. Exposed as public actions/methods
+  (`move_cursor`, `cursor_to`, `cursor_first`/`cursor_last`, `activate`, the
+  `cursor` property) with `Highlighted` / `Activated` messages; keys are only
+  focus-scoped, overridable defaults (the product owns keybinding policy). The
+  cursor row is the unstyled `flowview--cursor` component class. See
+  `examples/cursor.py`. Default (`cursor=False`) is unchanged — arrows scroll.
 - Infinite scroll: `FlowView` posts `ReachedTop` / `ReachedBottom` when an edge
   comes within `reach_threshold` rows (edge-triggered, re-arms on retreat) so a
   handler can lazy-load more.
