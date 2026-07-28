@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `examples/scroll_anim.py` — demonstrates the animated jump API: smooth jumps
+  to any entry / the ends, mid-flight redirect (a fresh jump supersedes), and
+  `stop_scroll_animation()` to halt in place.
+
 ## [0.5.0] - 2026-07-29
 
 ### Added
