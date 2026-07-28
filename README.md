@@ -348,6 +348,11 @@ class MyApp(App):
         log.insert_many(0, older)           # one reflow, position kept
 ```
 
+This works in **both directions**: newest-at-bottom (`STICKY_BOTTOM`, scroll up →
+`ReachedTop` → `insert_many(0, ...)` for older) and newest-at-top (`STICKY_TOP`,
+scroll down → `ReachedBottom` → `extend(...)` for older; appending below never
+shifts the view).
+
 See `examples/infinite.py` (a log that pages in older lines as you scroll up).
 
 ## Smooth scrolling (overscan & read-ahead)

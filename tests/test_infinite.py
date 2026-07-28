@@ -137,6 +137,43 @@ async def test_insert_many_at_top_edge_preserves_position() -> None:
 
 
 @pytest.mark.asyncio
+async def test_newest_on_top_direction() -> None:
+    # The mirror feed: newest at the top (STICKY_TOP), scroll *down* to load
+    # older items via extend/append — appending below never shifts the view.
+    from textual_flowview import Anchor
+
+    model: FlowModel[Row] = FlowModel()
+    for n in range(20):
+        model.append(Row(f"row-{n:02d}"))
+    app = InfiniteApp(model, anchor=Anchor.STICKY_TOP)
+    async with app.run_test(size=(30, 10)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        # scroll to the bottom -> ReachedBottom fires (a real handler would
+        # append older items here)
+        n0 = len(model)
+        view.scroll_to_bottom()
+        await pilot.pause()
+        assert app.bottoms >= 1
+        # STICKY_TOP keeps the newest pinned at the top when prepending
+        view.scroll_to_top()
+        await pilot.pause()
+        model.insert(0, Row("NEW"))
+        await pilot.pause()
+        await pilot.pause()
+        assert _true_top(view).item.text == "NEW"
+        # appending older below keeps whatever you're looking at in place
+        view.scroll_to_entry(list(model)[5])
+        await pilot.pause()
+        top, y = _true_top(view), int(view.scroll_offset.y)
+        model.extend([Row(f"OLD-{i}") for i in range(4)])
+        await pilot.pause()
+        assert _true_top(view) is top and int(view.scroll_offset.y) == y
+        assert len(model) > n0
+
+
+@pytest.mark.asyncio
 async def test_extend_appends_batch() -> None:
     model: FlowModel[Row] = FlowModel()
     model.append(Row("a"))
