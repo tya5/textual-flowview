@@ -408,6 +408,16 @@ class FlowView(ScrollView, Generic[T]):
         self._viewport.scroll_to_entry(entry, top=top)
         self.scroll_to(y=self._viewport.scroll_y, animate=animate, duration=duration)
 
+    def stop_scroll_animation(self) -> None:
+        """Interrupt an in-flight animated scroll, staying at the current
+        position (rather than snapping to where it was heading).
+
+        A no-op when nothing is animating. It only affects an *animated* scroll
+        (``scroll_to_entry(..., animate=True)`` and friends); an instant scroll
+        has already landed. Note a fresh animated jump already supersedes the
+        previous one, so reach for this only to stop *without* moving on."""
+        self.scroll_to(y=round(self.scroll_offset.y), animate=False)
+
     @property
     def selected(self) -> Entry[T] | None:
         """The currently selected entry, or ``None``."""

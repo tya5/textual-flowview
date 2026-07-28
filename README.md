@@ -538,7 +538,9 @@ if hit:
 All four jump methods take `animate=True` (and an optional `duration`) for a
 smooth scroll instead of an instant snap — e.g. `flow.scroll_to_entry(hit,
 animate=True, duration=0.3)`. Content presents as it scrolls past. The default
-stays instant.
+stays instant. A fresh animated jump supersedes one already in flight (it
+redirects, even reversing direction); `stop_scroll_animation()` stops an
+in-flight animated scroll where it is (a no-op when nothing is animating).
 | `select(entry)` / `clear_selection()` | Change selection. |
 | `find(pred)` / `find_next(pred)` / `find_previous(pred)` | Search entries. |
 | `entry_text(entry)` / `copy_entry(entry)` | Get / copy an entry's rendered text. |

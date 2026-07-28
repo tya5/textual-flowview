@@ -146,3 +146,27 @@ async def test_scroll_to_entry_instant_and_animated() -> None:
         for _ in range(20):
             await pilot.pause(0.05)
         assert round(view.scroll_offset.y) == 150  # arrived
+
+
+@pytest.mark.asyncio
+async def test_stop_scroll_animation_stays_put() -> None:
+    model: FlowModel[Row] = FlowModel()
+    es = [model.append(Row(f"r{i}")) for i in range(300)]
+    app = _app(model)
+    async with app.run_test(size=(30, 10)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        view.scroll_to_entry(es[200], animate=True, duration=1.0)
+        await pilot.pause(0.25)
+        mid = round(view.scroll_offset.y)
+        assert 0 < mid < 200  # mid-animation
+        view.stop_scroll_animation()
+        for _ in range(20):
+            await pilot.pause(0.05)
+        final = round(view.scroll_offset.y)
+        assert abs(final - mid) <= 2   # stayed put, did NOT reach 200
+        # no-op when nothing is animating
+        view.stop_scroll_animation()
+        await pilot.pause()
+        assert round(view.scroll_offset.y) == final
