@@ -121,3 +121,28 @@ async def test_reveal_unhides_and_scrolls() -> None:
         assert target in view._viewport.entries
         # brought into the visible range
         assert target in view._viewport.visible_range().entries
+
+
+@pytest.mark.asyncio
+async def test_scroll_to_entry_instant_and_animated() -> None:
+    model: FlowModel[Row] = FlowModel()
+    es = [model.append(Row(f"r{i}")) for i in range(200)]  # 200 rows, height 1
+    app = _app(model)
+    async with app.run_test(size=(30, 10)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        # instant (default) snaps to the target this frame
+        view.scroll_to_entry(es[150])
+        await pilot.pause()
+        assert round(view.scroll_offset.y) == 150
+
+        view.scroll_to_top()
+        await pilot.pause()
+        assert round(view.scroll_offset.y) == 0
+
+        # animated jump converges to the same target (no crash mid-animation)
+        view.scroll_to_entry(es[150], animate=True, duration=0.2)
+        for _ in range(20):
+            await pilot.pause(0.05)
+        assert round(view.scroll_offset.y) == 150  # arrived

@@ -534,6 +534,11 @@ if hit:
 | `scroll_to_entry(entry)` | Put `entry` at the top. |
 | `ensure_visible(entry)` | Scroll the minimum to reveal `entry`. |
 | `reveal(entry)` | Un-hide if collapsed, then ensure visible. |
+
+All four jump methods take `animate=True` (and an optional `duration`) for a
+smooth scroll instead of an instant snap — e.g. `flow.scroll_to_entry(hit,
+animate=True, duration=0.3)`. Content presents as it scrolls past. The default
+stays instant.
 | `select(entry)` / `clear_selection()` | Change selection. |
 | `find(pred)` / `find_next(pred)` / `find_previous(pred)` | Search entries. |
 | `entry_text(entry)` / `copy_entry(entry)` | Get / copy an entry's rendered text. |

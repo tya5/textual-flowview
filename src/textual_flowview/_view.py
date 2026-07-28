@@ -376,23 +376,37 @@ class FlowView(ScrollView, Generic[T]):
         vr = self._viewport.visible_range()
         return vr.start, vr.stop
 
-    def scroll_to_top(self) -> None:
-        self.scroll_to(y=0, animate=False)
+    def scroll_to_top(
+        self, *, animate: bool = False, duration: float | None = None
+    ) -> None:
+        self.scroll_to(y=0, animate=animate, duration=duration)
 
-    def scroll_to_bottom(self) -> None:
-        self.scroll_to(y=self.max_scroll_y, animate=False)
+    def scroll_to_bottom(
+        self, *, animate: bool = False, duration: float | None = None
+    ) -> None:
+        self.scroll_to(y=self.max_scroll_y, animate=animate, duration=duration)
 
-    def scroll_to_entry(self, entry: Entry[T]) -> None:
-        """Scroll so ``entry`` sits at the top of the viewport."""
-        self._sync_scroll()
-        self._viewport.scroll_to_entry(entry, top=True)
-        self.scroll_to(y=self._viewport.scroll_y, animate=False)
+    def scroll_to_entry(
+        self, entry: Entry[T], *, animate: bool = False, duration: float | None = None
+    ) -> None:
+        """Scroll so ``entry`` sits at the top of the viewport.
 
-    def ensure_visible(self, entry: Entry[T]) -> None:
+        Pass ``animate=True`` for a smooth jump (optionally timed with
+        ``duration``); content presents as it scrolls past."""
+        self._jump_to_entry(entry, top=True, animate=animate, duration=duration)
+
+    def ensure_visible(
+        self, entry: Entry[T], *, animate: bool = False, duration: float | None = None
+    ) -> None:
         """Scroll the minimum amount so ``entry`` is fully visible."""
+        self._jump_to_entry(entry, top=False, animate=animate, duration=duration)
+
+    def _jump_to_entry(
+        self, entry: Entry[T], *, top: bool, animate: bool, duration: float | None
+    ) -> None:
         self._sync_scroll()
-        self._viewport.scroll_to_entry(entry, top=False)
-        self.scroll_to(y=self._viewport.scroll_y, animate=False)
+        self._viewport.scroll_to_entry(entry, top=top)
+        self.scroll_to(y=self._viewport.scroll_y, animate=animate, duration=duration)
 
     @property
     def selected(self) -> Entry[T] | None:
@@ -667,12 +681,14 @@ class FlowView(ScrollView, Generic[T]):
                     return entry
         return None
 
-    def reveal(self, entry: Entry[T]) -> None:
+    def reveal(
+        self, entry: Entry[T], *, animate: bool = False, duration: float | None = None
+    ) -> None:
         """Bring ``entry`` into view, un-hiding it first if it was hidden
         (e.g. a search hit inside a collapsed group)."""
         if entry.hidden:
             entry.show()
-        self.ensure_visible(entry)
+        self.ensure_visible(entry, animate=animate, duration=duration)
 
     # -- clipboard ---------------------------------------------------------
 

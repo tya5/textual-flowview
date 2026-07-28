@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Animated jumps: `scroll_to_entry`, `ensure_visible`, `reveal`,
+  `scroll_to_top`, and `scroll_to_bottom` now accept `animate=True` and an
+  optional `duration` for a smooth scroll (content presents as it scrolls past).
+  The default stays instant, so existing calls are unchanged.
 - Public read-only `body_width` (the width passed to the presenter — content
   width minus both gutters, hidden counting as 0), plus
   `left_gutter_effective_width` / `right_gutter_effective_width`. Lets consumers
