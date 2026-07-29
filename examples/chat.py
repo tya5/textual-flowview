@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 
+from rich.align import Align
 from rich.console import Group
 from rich.panel import Panel
 from rich.text import Text
@@ -75,6 +76,9 @@ class ChatApp(App):
             decorator=StateDecorator(),
             gutter_width=2,
             anchor=Anchor.STICKY_BOTTOM,
+            empty=Align.center(
+                Text("No messages yet — say hello (or Ctrl+D)", style="grey54")
+            ),
         )
         yield Input(placeholder="Type a message and press Enter…")
         yield Footer()
