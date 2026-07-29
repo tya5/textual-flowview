@@ -28,7 +28,7 @@ timelines, logs, notifications, mail, AI agent transcripts).
 | index-based `scroll_to_index` / `model[i]` | ✗ not added (ergonomic only — index jump already works via `entries[i]` / `list(model)[i]` + `scroll_to_entry`) |
 | Initial scroll position (`initialTopMostItemIndex` equivalent) | ✗ missing |
 | Empty-state renderable (shown when the list has no entries) | ✅ `empty` + `empty_align` (vertical); horizontal/styling in the renderable |
-| In-scroll header / footer (list title, "load more" footer, "start of history" marker) | ✗ missing (widgets can sit outside FlowView, not inside the scroll) |
+| In-scroll header / footer (list title, "load more" footer, "start of history" marker) | ⛔ declined (#4) — fixed chrome = a widget outside FlowView; a band that scrolls with content = a regular entry |
 | Aggregate visible-range / is-scrolling events (`RangeChanged`, `ScrollStateChanged`) | ⚠ partial (`track_visibility` gives per-entry show/hide; no aggregate event) |
 | Live filter (`filter(predicate)` hiding non-matches) | ⚠ partial (do-able via `entry.hide()`; no dedicated API) |
 | Automatic height measurement (presenter need not supply height) | ⚠ by design height is explicit (the trait that makes e.g. Rich `ProgressBar` "just work") |
@@ -59,30 +59,33 @@ timelines, logs, notifications, mail, AI agent transcripts).
    declined as ergonomic-only (index jump already works via `entries[i]` +
    `scroll_to_entry`).
 5. ~~Empty-state~~ — **done** (`empty` + `empty_align`).
-6. **In-scroll header/footer**: list heading, a "load more" footer, a
-   "start of history" marker.
+6. ~~In-scroll header/footer~~ — **declined (#4)**: fixed chrome is a widget
+   outside FlowView; a band that scrolls with content is a regular entry.
 
-**Low (use-case dependent)**
+**Low (use-case dependent) — remaining, unstarted**
 
 7. Aggregate `VisibleRangeChanged` / `ScrollStateChanged` (is-scrolling) events.
-8. `filter(predicate)` live filtering.
+   (Per-entry visibility is already covered by `track_visibility`.)
+8. `filter(predicate)` live filtering. (Do-able today via `entry.hide()`.)
 9. Automatic height-measurement helper (trades against the explicit-height design).
 10. Multi-selection; insert/remove transitions; scroll save/restore.
 
 **Out of scope**
 
 - Grid / masonry / horizontal / table layouts — not what a flow view is for.
+- Index-based `scroll_to_index` / `initial_index` — ergonomic-only, declined.
 
-## Decision
+## Status
 
-**#1 + #2 shipped** (infinite scroll + prepend stability) — see
-`ReachedTop` / `ReachedBottom`, `reach_threshold`, and `FlowModel.insert_many` /
-`extend`, with `examples/infinite.py`. Position-preservation on prepend was
-already correct via the anchor capture/restore; the batch methods add a
-single-reflow path for a page of load-more items.
+All High and Medium candidates are **shipped or explicitly declined**. What's
+left is the Low bucket (#7–#10), each with a working today-workaround; none is
+required for the target use cases. The survey is effectively complete.
 
-Remaining candidates from the matrix above (keyboard cursor nav, scroll
-alignment / index jumps, empty-state, in-scroll header/footer, …) are unstarted.
+Shipped: scroll alignment · keyboard cursor · infinite scroll
+(`ReachedTop`/`ReachedBottom`, `reach_threshold`) · `insert_many`/`extend`
+(prepend-stable, single reflow) · empty state · animated jumps +
+`stop_scroll_animation` · `body_width` / effective gutter widths · `decorate()`
+contract docs.
 
 [react-virtuoso]: https://github.com/petyosi/react-virtuoso
 [TanStack Virtual]: https://deepwiki.com/TanStack/virtual/4.4-sticky-headers-and-footers

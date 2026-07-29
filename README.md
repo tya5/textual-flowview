@@ -225,6 +225,20 @@ FlowView > .flowview--sticky-header { background: $panel; }
 
 See `examples/groups.py`.
 
+### Headers & footers
+
+There's no dedicated header/footer prop, on purpose — the two cases are already
+covered:
+
+- **Fixed chrome** (a title bar, toolbar, or input that stays put) is a plain
+  widget *outside* the FlowView — just put a `Static` / `Panel` / `Input` above
+  or below it in `compose` (see the input bar in `examples/chat.py`).
+- A **band that scrolls with the content** (an intro banner, a "load more"
+  footer, a "— start of history —" marker) is a regular **entry** — `insert(0,
+  …)` for a header, `append(…)` for a footer, presented however you like. It
+  scrolls with the list for free, and `sticky_header` can even pin it. A "load
+  more" footer entry reports clicks through `FlowView.Clicked`.
+
 ## Minimap (scrollbar replacement)
 
 `FlowMinimap` is a thin overview strip that **replaces the scrollbar**: it
