@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `scroll_to_entry(entry, align=...)` — where the entry lands in the viewport:
+  `"start"` (top, default), `"center"`, `"end"` (bottom), or `"nearest"` (the
+  minimal scroll, same as `ensure_visible`). `center` is handy for search hits.
 - Opt-in keyboard cursor (`cursor=True`): ↑/↓ move a highlighted "current entry"
   item-by-item (the view follows), PageUp/PageDown by a page, Home/End to the
   ends, Enter/Space activate it. Exposed as public actions/methods

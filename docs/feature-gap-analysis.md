@@ -24,7 +24,8 @@ timelines, logs, notifications, mail, AI agent transcripts).
 | **Infinite scroll — edge-reached callbacks to load more** | ✅ implemented — `ReachedTop` / `ReachedBottom` + `reach_threshold` (#1) |
 | **Prepend older items without losing scroll position** | ✅ works via anchor capture/restore; `insert_many` / `extend` batch it into one reflow; tested + documented (#2) |
 | Keyboard cursor navigation (↑↓/PgUp/PgDn/Home/End highlighted cursor, distinct from selection) | ✅ implemented — opt-in `cursor=True`, exposed as actions + overridable focus-scoped defaults (#3) |
-| `scroll_to` alignment (center/end) and index-based `scroll_to_index` | ✗ missing (only top / ensure-visible) |
+| `scroll_to` alignment (center/end) | ✅ `scroll_to_entry(entry, align="start"/"center"/"end"/"nearest")` |
+| index-based `scroll_to_index` / `model[i]` | ✗ not added (ergonomic only — index jump already works via `entries[i]` / `list(model)[i]` + `scroll_to_entry`) |
 | Initial scroll position (`initialTopMostItemIndex` equivalent) | ✗ missing |
 | Empty-state renderable (shown when the list has no entries) | ✗ missing (only a per-entry loading placeholder) |
 | In-scroll header / footer (list title, "load more" footer, "start of history" marker) | ✗ missing (widgets can sit outside FlowView, not inside the scroll) |
@@ -53,8 +54,10 @@ timelines, logs, notifications, mail, AI agent transcripts).
    public actions/methods + messages; keys are focus-scoped, overridable
    defaults so the product keeps keybinding policy (arrows just scroll when
    `cursor=False`).
-4. **Scroll alignment + index jumps**: `scroll_to_entry(..., align="center"|"end")`,
-   `scroll_to_index(i)`, and an `initial_index` for the starting position.
+4. **Scroll alignment** — **done** (`scroll_to_entry(..., align="start"/"center"/
+   "end"/"nearest")`). Index-based `scroll_to_index` / `initial_index` were
+   declined as ergonomic-only (index jump already works via `entries[i]` +
+   `scroll_to_entry`).
 5. **Empty-state**: a renderable shown when the list has zero entries.
 6. **In-scroll header/footer**: list heading, a "load more" footer, a
    "start of history" marker.

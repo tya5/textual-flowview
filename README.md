@@ -605,6 +605,11 @@ animate=True, duration=0.3)`. Content presents as it scrolls past. The default
 stays instant. A fresh animated jump supersedes one already in flight (it
 redirects, even reversing direction); `stop_scroll_animation()` stops an
 in-flight animated scroll where it is (a no-op when nothing is animating).
+
+`scroll_to_entry` also takes **`align`** — where the entry lands in the
+viewport: `"start"` (top, the default), `"center"`, `"end"` (bottom), or
+`"nearest"` (minimal scroll — the same as `ensure_visible`). Center a search hit
+so its context is visible: `flow.scroll_to_entry(hit, align="center")`.
 | `select(entry)` / `clear_selection()` | Change selection. |
 | `move_cursor(delta)` / `cursor_to(entry)` / `cursor_first()` / `cursor_last()` / `activate()` / `cursor` | Keyboard cursor (`cursor=True`). |
 | `find(pred)` / `find_next(pred)` / `find_previous(pred)` | Search entries. |

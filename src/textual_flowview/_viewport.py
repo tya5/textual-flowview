@@ -288,6 +288,25 @@ class Viewport(Generic[T]):
         elif offset + height > self._scroll_y + self._height:
             self.scroll_to_offset(offset + height - self._height)
 
+    def scroll_entry_aligned(self, entry: Entry[T], align: str) -> None:
+        """Scroll so ``entry`` lands at ``align`` within the viewport:
+        ``"start"`` (top), ``"center"``, ``"end"`` (bottom), or ``"nearest"``
+        (minimal scroll). Offsets are clamped by :meth:`scroll_to_offset`."""
+        if align == "nearest":
+            self.scroll_to_entry(entry, top=False)
+            return
+        offset = self.offset_of(entry)
+        if offset is None:
+            return
+        height = self._height_of(entry)
+        if align == "start":
+            target = offset
+        elif align == "end":
+            target = offset + height - self._height
+        else:  # center
+            target = offset + (height - self._height) // 2
+        self.scroll_to_offset(target)
+
     def _clamp_scroll(self) -> None:
         self._scroll_y = max(0, min(self._scroll_y, self.max_scroll))
 

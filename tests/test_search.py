@@ -149,6 +149,40 @@ async def test_scroll_to_entry_instant_and_animated() -> None:
 
 
 @pytest.mark.asyncio
+async def test_scroll_to_entry_alignment() -> None:
+    model: FlowModel[Row] = FlowModel()
+    es = [model.append(Row(f"r{i}")) for i in range(100)]  # height 1 each
+    app = _app(model)
+    async with app.run_test(size=(30, 12)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        vh = view.content_size.height
+        target = es[50]
+
+        def row_in_view() -> int:
+            return view._viewport.offset_of(target) - int(view.scroll_offset.y)
+
+        view.scroll_to_top()
+        await pilot.pause()
+        view.scroll_to_entry(target, align="start")
+        await pilot.pause()
+        assert row_in_view() == 0
+
+        view.scroll_to_top()
+        await pilot.pause()
+        view.scroll_to_entry(target, align="end")
+        await pilot.pause()
+        assert row_in_view() == vh - 1  # bottom edge
+
+        view.scroll_to_top()
+        await pilot.pause()
+        view.scroll_to_entry(target, align="center")
+        await pilot.pause()
+        assert abs(row_in_view() - vh // 2) <= 1  # centred
+
+
+@pytest.mark.asyncio
 async def test_stop_scroll_animation_stays_put() -> None:
     model: FlowModel[Row] = FlowModel()
     es = [model.append(Row(f"r{i}")) for i in range(300)]

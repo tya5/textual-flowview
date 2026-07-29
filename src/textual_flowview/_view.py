@@ -513,25 +513,39 @@ class FlowView(ScrollView, Generic[T]):
         self.scroll_to(y=self.max_scroll_y, animate=animate, duration=duration)
 
     def scroll_to_entry(
-        self, entry: Entry[T], *, animate: bool = False, duration: float | None = None
+        self,
+        entry: Entry[T],
+        *,
+        align: Literal["start", "center", "end", "nearest"] = "start",
+        animate: bool = False,
+        duration: float | None = None,
     ) -> None:
-        """Scroll so ``entry`` sits at the top of the viewport.
+        """Scroll ``entry`` to ``align`` within the viewport: ``"start"`` (top,
+        the default), ``"center"``, ``"end"`` (bottom), or ``"nearest"`` (the
+        minimal scroll — same as :meth:`ensure_visible`). ``center`` is handy for
+        a search hit, so context above and below is visible.
 
         Pass ``animate=True`` for a smooth jump (optionally timed with
         ``duration``); content presents as it scrolls past."""
-        self._jump_to_entry(entry, top=True, animate=animate, duration=duration)
+        self._jump_to_entry(entry, align=align, animate=animate, duration=duration)
 
     def ensure_visible(
         self, entry: Entry[T], *, animate: bool = False, duration: float | None = None
     ) -> None:
-        """Scroll the minimum amount so ``entry`` is fully visible."""
-        self._jump_to_entry(entry, top=False, animate=animate, duration=duration)
+        """Scroll the minimum amount so ``entry`` is fully visible
+        (``scroll_to_entry(entry, align="nearest")``)."""
+        self._jump_to_entry(entry, align="nearest", animate=animate, duration=duration)
 
     def _jump_to_entry(
-        self, entry: Entry[T], *, top: bool, animate: bool, duration: float | None
+        self,
+        entry: Entry[T],
+        *,
+        align: Literal["start", "center", "end", "nearest"],
+        animate: bool,
+        duration: float | None,
     ) -> None:
         self._sync_scroll()
-        self._viewport.scroll_to_entry(entry, top=top)
+        self._viewport.scroll_entry_aligned(entry, align)
         self.scroll_to(y=self._viewport.scroll_y, animate=animate, duration=duration)
 
     def stop_scroll_animation(self) -> None:
