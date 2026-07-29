@@ -27,7 +27,7 @@ timelines, logs, notifications, mail, AI agent transcripts).
 | `scroll_to` alignment (center/end) | ✅ `scroll_to_entry(entry, align="start"/"center"/"end"/"nearest")` |
 | index-based `scroll_to_index` / `model[i]` | ✗ not added (ergonomic only — index jump already works via `entries[i]` / `list(model)[i]` + `scroll_to_entry`) |
 | Initial scroll position (`initialTopMostItemIndex` equivalent) | ✗ missing |
-| Empty-state renderable (shown when the list has no entries) | ✗ missing (only a per-entry loading placeholder) |
+| Empty-state renderable (shown when the list has no entries) | ✅ `empty` + `empty_align` (vertical); horizontal/styling in the renderable |
 | In-scroll header / footer (list title, "load more" footer, "start of history" marker) | ✗ missing (widgets can sit outside FlowView, not inside the scroll) |
 | Aggregate visible-range / is-scrolling events (`RangeChanged`, `ScrollStateChanged`) | ⚠ partial (`track_visibility` gives per-entry show/hide; no aggregate event) |
 | Live filter (`filter(predicate)` hiding non-matches) | ⚠ partial (do-able via `entry.hide()`; no dedicated API) |
@@ -58,7 +58,7 @@ timelines, logs, notifications, mail, AI agent transcripts).
    "end"/"nearest")`). Index-based `scroll_to_index` / `initial_index` were
    declined as ergonomic-only (index jump already works via `entries[i]` +
    `scroll_to_entry`).
-5. **Empty-state**: a renderable shown when the list has zero entries.
+5. ~~Empty-state~~ — **done** (`empty` + `empty_align`).
 6. **In-scroll header/footer**: list heading, a "load more" footer, a
    "start of history" marker.
 

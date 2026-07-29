@@ -243,6 +243,8 @@ class FlowView(ScrollView, Generic[T]):
         | None = None,
         animation_fps: float = 0,
         placeholder: RenderableType = "Loading...",
+        empty: RenderableType | None = None,
+        empty_align: Literal["top", "middle", "bottom"] = "middle",
         name: str | None = None,
         id: str | None = None,
         classes: str | None = None,
@@ -294,6 +296,11 @@ class FlowView(ScrollView, Generic[T]):
             spacing=spacing,
         )
         self._placeholder = placeholder
+        # Shown (whole-viewport) when there are no entries to draw. Vertical
+        # placement is `empty_align`; horizontal alignment / styling lives in the
+        # renderable itself (wrap it in rich Align / Panel as you like).
+        self._empty = empty
+        self._empty_align = empty_align
         # Gap (in rows) between entries, and what's drawn in it. `spacing` is the
         # authoritative gap height; `separator` (a renderable, or a
         # callable(above, below) -> renderable | None) is painted into those
@@ -998,6 +1005,12 @@ class FlowView(ScrollView, Generic[T]):
         content_width = self._content_width()
         if content_width <= 0:
             return Strip.blank(self.size.width)
+
+        # Empty state: nothing to draw (no entries, or all hidden). Show the
+        # `empty` renderable placed vertically per `empty_align`.
+        if self._empty is not None and not self._viewport.entries:
+            return self._empty_line(y, content_width)
+
         scroll_y = int(self.scroll_offset.y)
         virtual_y = y + scroll_y
 
@@ -1265,6 +1278,26 @@ class FlowView(ScrollView, Generic[T]):
         options = self.app.console.options.update_dimensions(width, max(1, height))
         lines = self.app.console.render_lines(renderable, options, pad=True)
         return [Strip(line, width) for line in lines]
+
+    def _empty_line(self, y: int, width: int) -> Strip:
+        """A screen row of the empty-state block, placed vertically per
+        ``empty_align`` (horizontal alignment lives in the renderable itself)."""
+        assert self._empty is not None
+        # Render the empty renderable to its natural height at the content width.
+        options = self.app.console.options.update_width(width)
+        lines = self.app.console.render_lines(self._empty, options, pad=True)
+        block = [Strip(line, width) for line in lines]
+        view_h = self._content_height()
+        if self._empty_align == "top":
+            top = 0
+        elif self._empty_align == "bottom":
+            top = max(0, view_h - len(block))
+        else:  # middle
+            top = max(0, (view_h - len(block)) // 2)
+        i = y - top
+        if 0 <= i < len(block):
+            return block[i]
+        return Strip.blank(width)
 
     # -- presentation workers ---------------------------------------------
 

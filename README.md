@@ -371,6 +371,26 @@ FlowView(model=..., presenter=..., overscan=4, read_ahead=None)
   `0` disables it. Larger = smoother fast scrolling at the cost of presenting
   more up front.
 
+## Empty & loading states
+
+When there are **no entries** to draw (an empty model, or every entry hidden),
+`empty` is shown across the viewport; `empty_align` places it vertically
+(`"top"` / `"middle"` (default) / `"bottom"`). Horizontal alignment and styling
+live in the renderable itself — wrap it in `rich.align.Align` / `Panel` as you
+like (FlowView adds no colours of its own):
+
+```python
+from rich.align import Align
+
+FlowView(model=..., presenter=..., empty=Align.center("No messages yet"))
+```
+
+This is distinct from **`placeholder`** (default `"Loading..."`), which is drawn
+per-entry for rows not presented *yet*. Both `empty` and `placeholder` are
+re-rendered on every paint, so a time-based renderable (e.g.
+`rich.spinner.Spinner`) animates — as long as something is repainting; set
+`animation_fps` > 0 to drive that repaint (see below).
+
 ## Selection
 
 Single-entry selection is **opt-in** — pass `selectable=True`. It's off by

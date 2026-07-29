@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Empty state: `empty` (a renderable shown across the viewport when there are no
+  entries — empty model or all hidden) with `empty_align` (`"top"` / `"middle"`
+  / `"bottom"`) for vertical placement. Horizontal alignment / styling live in
+  the renderable. Distinct from the per-entry `placeholder`; both re-render each
+  paint, so a `Spinner` animates when `animation_fps` > 0.
 - `scroll_to_entry(entry, align=...)` — where the entry lands in the viewport:
   `"start"` (top, default), `"center"`, `"end"` (bottom), or `"nearest"` (the
   minimal scroll, same as `ensure_visible`). `center` is handy for search hits.
