@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Repositioned the README, package description, and repo metadata to lead with
+  the primary use case: AI-agent / chat / log TUIs (the widget is still a general
+  variable-height virtualized list underneath).
+
 ## [0.6.0] - 2026-07-29
 
 ### Added

@@ -5,12 +5,32 @@
 [![Textual](https://img.shields.io/badge/built%20with-Textual-5a3fd6)](https://textual.textualize.io/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-*A virtualized Flow View widget for [Textual](https://textual.textualize.io/).*
+*The virtualized feed for **AI-agent, chat, and log TUIs** in
+[Textual](https://textual.textualize.io/).*
 
-`textual-flowview` displays **large collections of variable-height items**
-efficiently — chat, timelines, git history, event logs, notifications, mail,
-AI agent transcripts. None of these are special-cased. The widget only ever
-deals with a **Model + Presenter**.
+Building a terminal UI for an AI agent, an assistant chat, or a live log? You
+hit the same wall: thousands of **variable-height** entries — Markdown, tool
+calls, code blocks, streaming tokens, per-message status — and a plain
+`VerticalScroll` that mounts one widget per message grinds to a halt.
+
+`textual-flowview` is the widget for exactly that. It **paints only the visible
+rows** (O(viewport) — one widget regardless of N), so a 10k-message transcript
+scrolls as smoothly as ten, and it ships the things those feeds actually need:
+
+- **streaming updates** — mutate an entry and re-present it, cheaply, while the
+  gutter tracks its state independently;
+- a **per-message state gutter** — running / success / error / cancelled, with
+  live spinners, without re-rendering the body;
+- **sticky-bottom follow** — pinned to the newest, released when you scroll up
+  (Slack / Discord / Claude Code behaviour);
+- **infinite scroll-back** — lazy-load older history without losing your place;
+- **Rich renderables per message** — `Panel`, `Table`, `Syntax`, `Markdown`,
+  `Spinner`, `ProgressBar` drop straight in.
+
+Under the hood it's a general variable-height virtualized list — timelines, git
+history, notifications, mail work too — but it's *shaped* for the agent / chat /
+log feed. The widget only ever deals with a **Model + Presenter**; it never sees
+your data type.
 
 ![Activity feed with a per-state gutter, streaming, and sticky-bottom](assets/showcase.svg)
 
