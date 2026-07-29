@@ -271,7 +271,10 @@ class ShowcaseApp(App):
             lambda e: e.state in (EntryState.RUNNING, EntryState.ERROR, EntryState.CANCELLED)
         )
         if hit is not None:
-            view.reveal(hit)
+            if hit.hidden:
+                hit.show()
+            # center it so the surrounding context is visible, animated
+            view.scroll_to_entry(hit, align="center", animate=True, duration=0.2)
 
     def action_copy_last(self) -> None:
         entries = list(self.feed)
