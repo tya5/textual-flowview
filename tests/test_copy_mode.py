@@ -272,3 +272,50 @@ async def test_copy_cursor_entry_start_end() -> None:
         await pilot.press("right_square_bracket")  # entry bottom
         assert v._tc_row == start + 2              # 3-row entry
         assert v.entry_at_row(v._tc_row) is entry  # still the same entry
+
+
+@pytest.mark.asyncio
+async def test_copy_mode_search_selection() -> None:
+    app = CopyApp(["find the fox here", "nothing", "the fox again",
+                   "another fox line", "end"])
+    async with app.run_test(size=(40, 8)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        v.focus()
+        v.enter_copy_mode()
+        await pilot.pause()
+        for _ in range(9):
+            await pilot.press("l")           # to col 9 ("fox" start on row 0)
+        await pilot.press("v", "l", "l")     # select "fox"
+        await pilot.pause()
+        assert app.screen.get_selected_text() == "fox"
+
+        await pilot.press("asterisk")          # search the selection -> next "fox"
+        assert v._copy_query == "fox"
+        assert v.row_text(v._tc_row)[v._tc_col:v._tc_col + 3] == "fox"
+        assert v._tc_row == 2
+
+        await pilot.press("n")                 # next
+        assert v._tc_row == 3
+        await pilot.press("n")                 # wraps to the first
+        assert v._tc_row == 0
+        await pilot.press("N")                 # previous
+        assert v._tc_row == 3
+
+
+@pytest.mark.asyncio
+async def test_copy_search_word_under_cursor() -> None:
+    app = CopyApp(["apple banana", "cherry apple", "banana split"])
+    async with app.run_test(size=(40, 6)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        v.focus()
+        v.enter_copy_mode()
+        await pilot.pause()
+        # cursor on "apple" (row 0, col 0), no selection -> search the word
+        await pilot.press("asterisk")
+        assert v._copy_query == "apple"
+        assert v._tc_row == 1  # "cherry apple"
+        assert v.row_text(1)[v._tc_col:v._tc_col + 5] == "apple"

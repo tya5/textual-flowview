@@ -519,10 +519,18 @@ Every motion is a **public method** (and an action the default keys map onto):
 `exit_copy_mode()` / `copy_mode`.
 
 The default keys are vim-like and **live only while in copy mode** (they bubble
-to your app otherwise): `h`/`j`/`k`/`l`, `w`/`b`/`e`, `0`/`$`/`^`, `gg`/`G`, `v`,
-`V`, `y`, `zz`/`zt`/`zb`, `Ctrl-E`/`Ctrl-Y`, `Esc`. They're normal focus-scoped
-`BINDINGS` — subclass FlowView and override them to rebind; the keybinding policy
-stays yours. See `examples/copy_mode.py`.
+to your app otherwise): `h`/`j`/`k`/`l`, `w`/`b`/`e`, `0`/`$`/`^`, `gg`/`G`,
+`[`/`]` (current entry top/bottom), `v`, `V`, `y`, `*` / `n` / `N` (search the
+selection, then next/prev), `zz`/`zt`/`zb`, `Ctrl-E`/`Ctrl-Y`, `Esc`. They're
+normal focus-scoped `BINDINGS` — subclass FlowView and override them to rebind;
+the keybinding policy stays yours. See `examples/copy_mode.py`.
+
+**Search the selection.** `copy_search_selection()` (default `*`) searches for
+the current visual selection — or the word under the cursor if there's no
+selection — and jumps to the next occurrence; `copy_search_next()` / `previous()`
+(`n` / `N`) repeat, wrapping. `copy_search(query)` searches an arbitrary string.
+(This is a *text* search over the content; the entry-level `find` / `find_next`
+by predicate is separate.)
 
 `copy_scrolloff` keeps N rows of context above/below the cursor (vim
 `scrolloff`); the view scrolls early to preserve it. It's capped at half the

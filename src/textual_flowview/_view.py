@@ -147,6 +147,9 @@ class FlowView(ScrollView, Generic[T]):
         Binding("v", "copy_visual", "Visual", show=False),
         Binding("V", "copy_visual_line", "Visual line", show=False),
         Binding("y", "copy_yank", "Yank", show=False),
+        Binding("asterisk", "copy_search_selection", "Search selection", show=False),
+        Binding("n", "copy_search_next", "Search next", show=False),
+        Binding("N", "copy_search_previous", "Search prev", show=False),
         Binding("ctrl+e", "copy_scroll_line_down", "Scroll line down", show=False),
         Binding("ctrl+y", "copy_scroll_line_up", "Scroll line up", show=False),
         Binding("escape", "copy_exit", "Exit copy mode", show=False),
@@ -370,6 +373,7 @@ class FlowView(ScrollView, Generic[T]):
         # changes (insert/remove/reflow) instead of sliding to a stale abs row.
         self._tc_entry: Entry[T] | None = None
         self._tc_local = 0
+        self._copy_query = ""  # last copy-mode text search
         # Rows of context kept above/below the copy cursor (vim `scrolloff`); the
         # view scrolls early to preserve it. Capped at half the viewport, so a
         # large value (e.g. 999) pins the cursor to the centre.
@@ -952,6 +956,60 @@ class FlowView(ScrollView, Generic[T]):
         self._render_copy_cursor()
         return text
 
+    def _current_word(self) -> str:
+        text = self.row_text(self._tc_row)
+        for start, end in self._word_bounds(text):
+            if start <= self._tc_col <= end:
+                return text[start : end + 1]
+        return ""
+
+    def copy_search(self, query: str, *, forward: bool = True) -> bool:
+        """Search the content for ``query`` and move the cursor to the next
+        occurrence (wrapping). Returns whether a match was found; remembers the
+        query for :meth:`copy_search_next` / :meth:`copy_search_previous`."""
+        if not query:
+            return False
+        self._copy_query = query
+        return self._do_copy_search(query, forward=forward)
+
+    def copy_search_selection(self) -> bool:
+        """Search for the current visual selection (or, with no selection, the
+        word under the cursor) — vim ``*``."""
+        query = self.screen.get_selected_text() if self._tc_anchor is not None else ""
+        query = (query or self._current_word()).strip("\n")
+        return self.copy_search(query, forward=True)
+
+    def copy_search_next(self) -> bool:
+        return self._do_copy_search(self._copy_query, forward=True)
+
+    def copy_search_previous(self) -> bool:
+        return self._do_copy_search(self._copy_query, forward=False)
+
+    def _do_copy_search(self, query: str, *, forward: bool) -> bool:
+        n = self.row_count
+        if not query or n == 0:
+            return False
+        row, col = self._tc_row, self._tc_col
+        if forward:
+            order = (
+                [(row, self.row_text(row).find(query, col + 1))]
+                + [(r, self.row_text(r).find(query)) for r in range(row + 1, n)]
+                + [(r, self.row_text(r).find(query)) for r in range(0, row + 1)]
+            )
+        else:
+            order = (
+                [(row, self.row_text(row).rfind(query, 0, col))]
+                + [(r, self.row_text(r).rfind(query)) for r in range(row - 1, -1, -1)]
+                + [(r, self.row_text(r).rfind(query)) for r in range(n - 1, row - 1, -1)]
+            )
+        for r, c in order:
+            if c != -1:
+                self._tc_row, self._tc_col = r, c
+                self._tc_anchor = None  # land on the match (like vim search)
+                self._render_copy_cursor()
+                return True
+        return False
+
     def copy_scroll_center(self) -> None:
         self.scroll_to(y=self._tc_row - self.content_size.height // 2, animate=False)
         self._render_copy_cursor()
@@ -1083,6 +1141,15 @@ class FlowView(ScrollView, Generic[T]):
 
     def action_copy_entry_end(self) -> None:
         self.copy_cursor_entry_end()
+
+    def action_copy_search_selection(self) -> None:
+        self.copy_search_selection()
+
+    def action_copy_search_next(self) -> None:
+        self.copy_search_next()
+
+    def action_copy_search_previous(self) -> None:
+        self.copy_search_previous()
 
     def action_copy_word_forward(self) -> None:
         self.copy_cursor_word_forward()

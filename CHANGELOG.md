@@ -33,11 +33,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `FlowView.row_count` and `row_text(y)` — the content-row count and per-row
   text (the string a selection `Offset.x` indexes into), the primitives copy
   mode is built on. `entry_at_row(y)` maps a content row to its entry.
-- Copy mode and the entry highlight are **unified** when `highlight=True`: one
-  cursor at two zoom levels (the current entry is `entry_at_row(cursor row)`).
-  Copy mode starts on the highlighted entry, ↑/↓ move by entry
-  (`copy_cursor_entry`) while h/j/k/l move by character, and the entry highlight
-  / `Highlighted` message follow the text cursor.
+- Copy mode: search the selection — `copy_search_selection()` (default `*`)
+  searches for the visual selection (or the word under the cursor) and jumps to
+  the next occurrence; `copy_search_next` / `previous` (`n` / `N`) repeat,
+  wrapping; `copy_search(query)` for an arbitrary string. Plus `[` / `]`
+  (`copy_cursor_entry_start` / `end`) jump within the current entry.
+- Copy mode integrates with the entry highlight (`highlight=True`): it **starts**
+  on the highlighted entry, and ↑/↓ move the text cursor by entry
+  (`copy_cursor_entry`) while h/j/k/l move by character. The highlight itself is
+  **held fixed** during copy mode — moving the cursor never moves it or posts
+  `Highlighted` (a consumer may mutate content in that handler). The cursor is
+  anchored to its entry, so it rides insert/remove/reflow instead of sliding to a
+  stale row.
 
 ## [0.6.2] - 2026-07-30
 
