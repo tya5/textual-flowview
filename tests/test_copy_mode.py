@@ -174,12 +174,16 @@ class HighlightCopyApp(CopyApp):
         )
         yield self.flow
 
+    def on_flow_view_highlighted(self, event: FlowView.Highlighted) -> None:
+        self.highlights = getattr(self, "highlights", [])
+        self.highlights.append(event.entry)
+
 
 @pytest.mark.asyncio
-async def test_copy_mode_unifies_with_entry_highlight() -> None:
-    # highlight=True + copy mode: one cursor. Entering copy mode starts on the
-    # highlighted entry; ↑/↓ jump by entry and the current entry (and the
-    # Highlighted state) follows the text cursor.
+async def test_copy_mode_starts_at_highlight_but_leaves_it_fixed() -> None:
+    # Copy mode *starts* on the highlighted entry, but the highlight is then
+    # FIXED: moving the text cursor never moves the highlight or fires
+    # Highlighted (a consumer may mutate content in that handler).
     app = HighlightCopyApp(["msg a", "msg b", "msg c"])
     async with app.run_test(size=(30, 12)) as pilot:
         await pilot.pause()
@@ -189,16 +193,82 @@ async def test_copy_mode_unifies_with_entry_highlight() -> None:
         es = list(app.model)
 
         v.highlight_entry(es[1])          # highlight msg b
-        v.enter_copy_mode()               # starts on msg b
+        await pilot.pause()               # let that Highlighted flush
+        app.highlights = []
+        v.enter_copy_mode()               # starts on msg b (no Highlighted fired)
         await pilot.pause()
         assert v.entry_at_row(v._tc_row) is es[1]
         assert v.highlighted is es[1]
 
-        await pilot.press("down")          # entry-jump -> msg c
+        await pilot.press("down")          # text cursor jumps entry -> msg c
+        await pilot.press("j", "down")     # more cursor movement
         await pilot.pause()
-        assert v.entry_at_row(v._tc_row) is es[2]
-        assert v.highlighted is es[2]
+        assert v.entry_at_row(v._tc_row) is not es[1]  # cursor moved off msg b
+        assert v.highlighted is es[1]                  # highlight stayed put
+        assert app.highlights == []                    # no Highlighted side effects
 
-        await pilot.press("up")            # entry-jump back -> msg b
+
+@pytest.mark.asyncio
+async def test_copy_cursor_rides_content_changes() -> None:
+    # A content change (insert/remove elsewhere) must not slide the cursor to a
+    # stale absolute row: it stays on its entry.
+    app = CopyApp([f"row-{i:02d}" for i in range(10)])
+    async with app.run_test(size=(30, 8)) as pilot:
         await pilot.pause()
-        assert v.highlighted is es[1]
+        await pilot.pause()
+        v = app.flow
+        v.focus()
+        v.enter_copy_mode()
+        await pilot.pause()
+        for _ in range(5):
+            await pilot.press("j")            # cursor onto row-05
+        target = v.entry_at_row(v._tc_row)
+        assert target is not None and target.item.text == "row-05"
+
+        app.model.insert_many(0, [Row(f"NEW-{i}") for i in range(3)])  # 3 rows above
+        await pilot.pause()
+        assert v.entry_at_row(v._tc_row) is target  # still on row-05
+
+        next(iter(app.model)).remove()          # remove a row above
+        await pilot.pause()
+        assert v.entry_at_row(v._tc_row) is target
+
+        app.model.clear()                        # clear -> leaves copy mode cleanly
+        await pilot.pause()
+        assert not v.copy_mode
+
+
+@pytest.mark.asyncio
+async def test_copy_cursor_entry_start_end() -> None:
+    class TallPresenter:
+        async def present(self, item: Row, width: int) -> Presentation:
+            return Presentation(height=3, renderable=Text(f"{item.text}\n.\n."))
+
+    model: FlowModel[Row] = FlowModel()
+    for i in range(3):
+        model.append(Row(f"E{i}"))
+
+    class TallApp(App):
+        def compose(self) -> ComposeResult:
+            self.flow = FlowView(
+                model=model, presenter=TallPresenter(), spacing=0, estimated_height=3
+            )
+            yield self.flow
+
+    app = TallApp()
+    async with app.run_test(size=(30, 12)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        v.focus()
+        v.enter_copy_mode()
+        await pilot.pause()
+        for _ in range(4):
+            await pilot.press("j")  # into entry E1, middle row
+        entry = v.entry_at_row(v._tc_row)
+        start = v._viewport.offset_of(entry)
+        await pilot.press("left_square_bracket")   # entry top
+        assert v._tc_row == start
+        await pilot.press("right_square_bracket")  # entry bottom
+        assert v._tc_row == start + 2              # 3-row entry
+        assert v.entry_at_row(v._tc_row) is entry  # still the same entry

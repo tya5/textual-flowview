@@ -142,6 +142,8 @@ class FlowView(ScrollView, Generic[T]):
         Binding("b", "copy_word_back", "Word ←", show=False),
         Binding("e", "copy_word_end", "Word end", show=False),
         Binding("G", "copy_bottom", "Bottom", show=False),
+        Binding("left_square_bracket", "copy_entry_start", "Entry top", show=False),
+        Binding("right_square_bracket", "copy_entry_end", "Entry bottom", show=False),
         Binding("v", "copy_visual", "Visual", show=False),
         Binding("V", "copy_visual_line", "Visual line", show=False),
         Binding("y", "copy_yank", "Yank", show=False),
@@ -364,6 +366,10 @@ class FlowView(ScrollView, Generic[T]):
         self._tc_anchor: tuple[int, int] | None = None  # visual-mode start (row, col)
         self._tc_line_visual = False
         self._tc_pending = ""  # multi-key prefix in copy-mode ("g" or "z")
+        # The cursor is anchored to (entry, row-within-entry) so it rides content
+        # changes (insert/remove/reflow) instead of sliding to a stale abs row.
+        self._tc_entry: Entry[T] | None = None
+        self._tc_local = 0
         # Rows of context kept above/below the copy cursor (vim `scrolloff`); the
         # view scrolls early to preserve it. Capped at half the viewport, so a
         # large value (e.g. 999) pins the cursor to the centre.
@@ -457,6 +463,7 @@ class FlowView(ScrollView, Generic[T]):
         state = self._capture()
         self._viewport.set_entries(self._visible_entries())
         self._refresh_layout(state)
+        self._reanchor_copy_cursor()
 
     def on_flow_insert_many(self, entries: list[Entry[T]], index: int) -> None:
         # One capture/restore + one reflow for the whole batch (repeated single
@@ -465,6 +472,7 @@ class FlowView(ScrollView, Generic[T]):
         state = self._capture()
         self._viewport.set_entries(self._visible_entries())
         self._refresh_layout(state)
+        self._reanchor_copy_cursor()
 
     def on_flow_update(self, entry: Entry[T]) -> None:
         # The revision bump already makes the cached presentation a miss.
@@ -478,6 +486,7 @@ class FlowView(ScrollView, Generic[T]):
         state = self._capture()
         self._refresh_layout(state)
         self._present_entry(entry)
+        self._reanchor_copy_cursor()
 
     def on_flow_remove(self, entry: Entry[T], index: int) -> None:
         if self._selected is entry:
@@ -487,11 +496,14 @@ class FlowView(ScrollView, Generic[T]):
         self._stop_animation(entry.id)
         self._drop_observers(entry.id)
         self._visible_ids.discard(entry.id)
+        if self._tc_entry is entry:
+            self._tc_entry = None  # anchor entry gone; reanchor falls back to abs row
         state = self._capture()
         self._layout.discard(entry.id)
         self._strip_cache.pop(entry.id, None)
         self._viewport.set_entries(self._visible_entries())
         self._refresh_layout(state)
+        self._reanchor_copy_cursor()
 
     def on_flow_visibility(self, entry: Entry[T]) -> None:
         # Which entries are visible changed (a group collapsed/expanded). Rebuild
@@ -505,8 +517,10 @@ class FlowView(ScrollView, Generic[T]):
         self._viewport.set_entries(self._visible_entries())
         self._refresh_layout(state)
         self._present_visible()
+        self._reanchor_copy_cursor()
 
     def on_flow_clear(self) -> None:
+        self.exit_copy_mode()  # nothing left to navigate
         if self._selected is not None:
             self.select(None)
         if self._highlighted is not None:
@@ -848,6 +862,28 @@ class FlowView(ScrollView, Generic[T]):
             self._tc_col = 0
             self._render_copy_cursor()
 
+    def copy_cursor_entry_start(self) -> None:
+        """Jump to the first row of the entry under the cursor."""
+        entry = self.entry_at_row(self._tc_row)
+        if entry is None:
+            return
+        off = self._viewport.offset_of(entry)
+        if off is not None:
+            self._tc_row = off
+            self._tc_col = 0
+            self._render_copy_cursor()
+
+    def copy_cursor_entry_end(self) -> None:
+        """Jump to the last row of the entry under the cursor."""
+        entry = self.entry_at_row(self._tc_row)
+        if entry is None:
+            return
+        off = self._viewport.offset_of(entry)
+        if off is not None:
+            self._tc_row = off + max(0, self._viewport.height_of(entry) - 1)
+            self._tc_col = 0
+            self._render_copy_cursor()
+
     def copy_cursor_top(self) -> None:
         self._tc_row = 0
         self._render_copy_cursor()
@@ -957,18 +993,33 @@ class FlowView(ScrollView, Generic[T]):
             (sy, sx), (ey, ex) = sorted([self._tc_anchor, (row, col)])
             sel = Selection(Offset(sx, sy), Offset(ex + 1, ey))  # inclusive end cell
         self.screen.selections = {self: sel}
-        # Unified cursor: the current entry follows the text cursor's row, so the
-        # entry highlight and Highlighted message stay in sync (only when the
-        # entry highlight is enabled — otherwise copy mode is a pure text cursor).
-        if self._highlight_enabled:
-            entry = self.entry_at_row(row)
-            # Keep the highlight on the last entry while crossing a spacer gap
-            # (entry_at_row is None there) — no flicker.
-            if entry is not None and entry is not self._highlighted:
-                self._highlighted = entry
-                self.post_message(self.Highlighted(self, entry))
+        # Anchor to the entry under the cursor + local row, so a later content
+        # change can re-derive the absolute row (see _reanchor_copy_cursor).
+        entry = self.entry_at_row(row)
+        if entry is not None:
+            off = self._viewport.offset_of(entry)
+            if off is not None:
+                self._tc_entry = entry
+                self._tc_local = row - off
+        # The entry highlight is **fixed** during copy mode — it is not moved and
+        # no ``Highlighted`` is posted as the text cursor roams. (A consumer may
+        # mutate an entry in its ``Highlighted`` handler; moving the highlight on
+        # every keypress would fire those side effects mid-copy.) Copy mode only
+        # *reads* the highlight — it starts there (see ``enter_copy_mode``).
         if reveal:
             self._reveal_row(row)
+
+    def _reanchor_copy_cursor(self) -> None:
+        """After a content change, re-derive the cursor's absolute row from its
+        anchored entry + local row so it rides the entry instead of sliding."""
+        if not self._copy_mode:
+            return
+        entry = self._tc_entry
+        if entry is not None and entry.alive and not entry.hidden:
+            off = self._viewport.offset_of(entry)
+            if off is not None:
+                self._tc_row = off + self._tc_local
+        self._render_copy_cursor(reveal=False)
 
     def _scrolloff(self) -> int:
         # Can't keep more context than fits above/below the middle row.
@@ -1026,6 +1077,12 @@ class FlowView(ScrollView, Generic[T]):
 
     def action_copy_bottom(self) -> None:
         self.copy_cursor_bottom()
+
+    def action_copy_entry_start(self) -> None:
+        self.copy_cursor_entry_start()
+
+    def action_copy_entry_end(self) -> None:
+        self.copy_cursor_entry_end()
 
     def action_copy_word_forward(self) -> None:
         self.copy_cursor_word_forward()
