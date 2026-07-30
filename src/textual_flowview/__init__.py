@@ -40,4 +40,4 @@ __all__ = [
     "VisibilityHandle",
 ]
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"

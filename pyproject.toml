@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "textual-flowview"
-version = "0.7.0"
+version = "0.8.0"
 description = "The virtualized feed widget for AI-agent, chat, and log TUIs in Textual."
 readme = "README.md"
 requires-python = ">=3.11"
