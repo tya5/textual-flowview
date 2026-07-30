@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `flowview--selected` / `flowview--cursor` / `flowview--sticky-header` now honour
+  the documented "no colours by default" contract: an **undeclared** class paints
+  nothing (previously it painted the widget's inherited fg/bg across the row —
+  e.g. a permanent near-black block on the cursor row) (#5). A **declared**
+  highlight background is applied as an override, so it wins over a row's
+  `Presentation.background` instead of being silently swallowed on tinted rows
+  (#6).
+
 ### Changed
 
 - Repositioned the README, package description, and repo metadata to lead with

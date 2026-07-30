@@ -5,6 +5,7 @@ from typing import Any, ClassVar, Generic, Literal, TypeVar
 
 from rich.console import Console, RenderableType
 from rich.panel import Panel
+from rich.segment import Segment
 from rich.style import Style
 from rich.text import Text
 from textual import events
@@ -106,8 +107,11 @@ class FlowView(ScrollView, Generic[T]):
     | ``flowview--cursor`` | The keyboard-cursor entry's rows (``cursor=True``). |
 
     FlowView ships **no colours of its own** — these classes are unstyled by
-    default, so nothing is painted until your app (or theme) gives them a style.
-    Text selection likewise defers to Textual's ``screen--selection``.
+    default, so nothing is painted until your app (or theme) gives them a style
+    (only the rules you declare are applied — an undeclared class contributes
+    nothing). A declared background is applied as an **override**, so it wins
+    over a row's :attr:`Presentation.background`. Text selection likewise defers
+    to Textual's ``screen--selection``.
     """
 
     # Focus-scoped, overridable defaults. They map keys onto the cursor
@@ -1178,12 +1182,34 @@ class FlowView(ScrollView, Generic[T]):
             line = line.apply_style(Style(bgcolor=presentation.background))
 
         if sticky:
-            line = line.apply_style(self.get_component_rich_style("flowview--sticky-header"))
+            line = self._overlay_component(line, "flowview--sticky-header")
         if self._selected is entry:
-            line = line.apply_style(self.get_component_rich_style("flowview--selected"))
+            line = self._overlay_component(line, "flowview--selected")
         if self._cursor is entry:
-            line = line.apply_style(self.get_component_rich_style("flowview--cursor"))
+            line = self._overlay_component(line, "flowview--cursor")
         return line
+
+    def _overlay_component(self, line: Strip, name: str) -> Strip:
+        """Overlay a component-class style on a row.
+
+        Two things the plain ``apply_style(get_component_rich_style(...))`` got
+        wrong (issues #5, #6):
+
+        * uses the **partial** style — only what the app actually declared — so
+          an *undeclared* class contributes nothing (the fully-resolved style
+          otherwise carries the widget's inherited fg/bg and paints the row);
+        * applies it as an **override on top** of each segment, so a declared
+          highlight background wins over a row's ``Presentation.background``
+          (``apply_style`` merges as a base *under* the segment, which the row
+          background would always beat)."""
+        style = self.get_component_rich_style(name, partial=True)
+        if not style:
+            return line
+        segments = [
+            Segment(text, (seg_style + style) if seg_style is not None else style, control)
+            for text, seg_style, control in line
+        ]
+        return Strip(segments, line.cell_length)
 
     def _sticky_state(self, scroll_y: int) -> tuple[Entry[T], int, int] | None:
         """The pinned header for the current scroll position: ``(header,
