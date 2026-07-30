@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, ClassVar, Generic, Literal, TypeVar
 
+from rich.cells import cell_len
 from rich.console import Console, RenderableType
 from rich.panel import Panel
 from rich.segment import Segment
@@ -1094,17 +1095,26 @@ class FlowView(ScrollView, Generic[T]):
             span = selection.get_span(virtual_y)
             if span is not None:
                 width = line.cell_length
+                text = line.text
+                n = len(text)
                 start, end = span
-                if end == -1 or end > width:
-                    end = width
-                start = max(0, min(start, width))
-                end = max(start, min(end, width))
-                if end > start:
+                # The span is in *character* offsets (end == -1 means "to end of
+                # line"); Strip.crop works in *cells*. Convert, or a row with
+                # double-width glyphs (CJK, emoji) highlights the wrong columns
+                # and clips characters mid-cell.
+                end = n if end == -1 else end
+                start = max(0, min(start, n))
+                end = max(start, min(end, n))
+                start_cell = cell_len(text[:start])
+                end_cell = cell_len(text[:end])
+                if end_cell > start_cell:
                     line = Strip.join(
                         [
-                            line.crop(0, start),
-                            line.crop(start, end).apply_style(self.selection_style),
-                            line.crop(end, width),
+                            line.crop(0, start_cell),
+                            line.crop(start_cell, end_cell).apply_style(
+                                self.selection_style
+                            ),
+                            line.crop(end_cell, width),
                         ]
                     )
         return line.apply_offsets(0, virtual_y)

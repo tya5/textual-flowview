@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Mouse text selection on rows with **double-width glyphs** (CJK, emoji): the
+  selection span is in character offsets but the highlight cropped in cells, so
+  the highlighted columns drifted from the drag/copied text and glyphs were
+  clipped mid-cell (characters appeared to vanish). Character offsets are now
+  converted to cell columns before cropping; ASCII rows are unaffected.
+
 ## [0.6.1] - 2026-07-30
 
 ### Fixed

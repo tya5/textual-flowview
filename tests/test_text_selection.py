@@ -146,3 +146,55 @@ async def test_native_copy_path_uses_get_selection() -> None:
         app.copy_to_clipboard = copied.append  # type: ignore[method-assign]
         app.screen.action_copy_text()
         assert copied == ["copy this"]
+
+
+@pytest.mark.asyncio
+async def test_selection_highlight_aligns_with_double_width_glyphs() -> None:
+    # Regression: the selection span is in character offsets but the highlight
+    # crops in cells. With CJK / emoji (2 cells wide) the two diverged, so the
+    # highlighted columns and copied text disagreed (and glyphs got clipped).
+    from rich.cells import cell_len
+
+    model: FlowModel[Row] = FlowModel()
+    model.append(Row("あいうえおXYZ"))  # 5 full-width + 3 half-width
+    app = _app(model)
+    async with app.run_test(size=(30, 4)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        # select the first 4 characters ("あいうえ" = 8 cells)
+        app.screen.selections = {view: Selection(Offset(0, 0), Offset(4, 0))}
+        await pilot.pause()
+        strip = view.render_line(0)
+        highlighted = "".join(
+            ch
+            for seg in strip
+            for ch in seg.text
+            if seg.style is not None and seg.style.bgcolor is not None
+        )
+        # the highlighted glyphs match the selected characters, not a cell-count
+        # truncation of them
+        assert highlighted == "あいうえ"
+        assert cell_len(highlighted) == 8
+        assert app.screen.get_selected_text() == "あいうえ"
+
+
+@pytest.mark.asyncio
+async def test_selection_highlight_ascii_unchanged() -> None:
+    model: FlowModel[Row] = FlowModel()
+    model.append(Row("0123456789"))
+    app = _app(model)
+    async with app.run_test(size=(30, 4)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        view = app.query_one(FlowView)
+        app.screen.selections = {view: Selection(Offset(2, 0), Offset(6, 0))}
+        await pilot.pause()
+        strip = view.render_line(0)
+        highlighted = "".join(
+            ch
+            for seg in strip
+            for ch in seg.text
+            if seg.style is not None and seg.style.bgcolor is not None
+        )
+        assert highlighted == "2345"
