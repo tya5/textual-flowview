@@ -145,6 +145,8 @@ class FlowView(ScrollView, Generic[T]):
         Binding("v", "copy_visual", "Visual", show=False),
         Binding("V", "copy_visual_line", "Visual line", show=False),
         Binding("y", "copy_yank", "Yank", show=False),
+        Binding("ctrl+e", "copy_scroll_line_down", "Scroll line down", show=False),
+        Binding("ctrl+y", "copy_scroll_line_up", "Scroll line up", show=False),
         Binding("escape", "copy_exit", "Exit copy mode", show=False),
     ]
 
@@ -253,6 +255,7 @@ class FlowView(ScrollView, Generic[T]):
         right_gutter_width: int | None = None,
         selectable: bool = False,
         highlight: bool = False,
+        copy_scrolloff: int = 0,
         sticky_header: Callable[[Entry[T]], bool] | None = None,
         anchor: Anchor = Anchor.CURRENT,
         estimated_height: int = 1,
@@ -361,6 +364,10 @@ class FlowView(ScrollView, Generic[T]):
         self._tc_anchor: tuple[int, int] | None = None  # visual-mode start (row, col)
         self._tc_line_visual = False
         self._tc_pending = ""  # multi-key prefix in copy-mode ("g" or "z")
+        # Rows of context kept above/below the copy cursor (vim `scrolloff`); the
+        # view scrolls early to preserve it. Capped at half the viewport, so a
+        # large value (e.g. 999) pins the cursor to the centre.
+        self._copy_scrolloff = max(0, copy_scrolloff)
         # Per-entry visibility observers: acquire/release a user resource as the
         # entry enters/leaves the viewport (the general lifecycle hook).
         self._observers: dict[int, list[_VisibilityObserver[T]]] = {}
@@ -880,7 +887,20 @@ class FlowView(ScrollView, Generic[T]):
         self.scroll_to(y=self._tc_row - self.content_size.height + 1, animate=False)
         self._render_copy_cursor()
 
-    def _render_copy_cursor(self) -> None:
+    @property
+    def copy_scrolloff(self) -> int:
+        """Rows of context kept above/below the copy cursor before the view
+        scrolls (vim ``scrolloff``). Capped at half the viewport, so a large
+        value (``999``) keeps the cursor centred while the content scrolls under
+        it. Settable at runtime."""
+        return self._copy_scrolloff
+
+    @copy_scrolloff.setter
+    def copy_scrolloff(self, value: int) -> None:
+        self._copy_scrolloff = max(0, value)
+        self._render_copy_cursor()
+
+    def _render_copy_cursor(self, *, reveal: bool = True) -> None:
         if not self._copy_mode:
             return
         rows = max(1, self.row_count)
@@ -896,15 +916,39 @@ class FlowView(ScrollView, Generic[T]):
             (sy, sx), (ey, ex) = sorted([self._tc_anchor, (row, col)])
             sel = Selection(Offset(sx, sy), Offset(ex + 1, ey))  # inclusive end cell
         self.screen.selections = {self: sel}
-        self._reveal_row(row)
+        if reveal:
+            self._reveal_row(row)
+
+    def _scrolloff(self) -> int:
+        # Can't keep more context than fits above/below the middle row.
+        return min(self._copy_scrolloff, max(0, (self.content_size.height - 1) // 2))
 
     def _reveal_row(self, row: int) -> None:
         top = int(self.scroll_offset.y)
         height = self.content_size.height
-        if row < top:
-            self.scroll_to(y=row, animate=False)
-        elif row >= top + height:
-            self.scroll_to(y=row - height + 1, animate=False)
+        off = self._scrolloff()
+        if row - off < top:
+            self.scroll_to(y=row - off, animate=False)
+        elif row + off > top + height - 1:
+            self.scroll_to(y=row + off - height + 1, animate=False)
+
+    def copy_scroll_line_down(self) -> None:
+        """Scroll the view down one row, keeping the cursor on its buffer row
+        until ``scrolloff`` forces it along (vim ``Ctrl-E``)."""
+        self.scroll_to(y=int(self.scroll_offset.y) + 1, animate=False)
+        self._follow_view_with_cursor()
+
+    def copy_scroll_line_up(self) -> None:
+        """Scroll the view up one row (vim ``Ctrl-Y``)."""
+        self.scroll_to(y=int(self.scroll_offset.y) - 1, animate=False)
+        self._follow_view_with_cursor()
+
+    def _follow_view_with_cursor(self) -> None:
+        top = int(self.scroll_offset.y)
+        height = self.content_size.height
+        off = self._scrolloff()
+        self._tc_row = max(top + off, min(self._tc_row, top + height - 1 - off))
+        self._render_copy_cursor(reveal=False)
 
     # -- copy-mode actions (default, overridable bindings map onto these) --
 
@@ -949,6 +993,12 @@ class FlowView(ScrollView, Generic[T]):
 
     def action_copy_yank(self) -> None:
         self.copy_yank()
+
+    def action_copy_scroll_line_down(self) -> None:
+        self.copy_scroll_line_down()
+
+    def action_copy_scroll_line_up(self) -> None:
+        self.copy_scroll_line_up()
 
     def action_copy_exit(self) -> None:
         self.exit_copy_mode()

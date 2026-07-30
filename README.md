@@ -520,9 +520,16 @@ Every motion is a **public method** (and an action the default keys map onto):
 
 The default keys are vim-like and **live only while in copy mode** (they bubble
 to your app otherwise): `h`/`j`/`k`/`l`, `w`/`b`/`e`, `0`/`$`/`^`, `gg`/`G`, `v`,
-`V`, `y`, `zz`/`zt`/`zb`, `Esc`. They're normal focus-scoped `BINDINGS` — subclass
-FlowView and override them to rebind; the keybinding policy stays yours. See
-`examples/copy_mode.py`.
+`V`, `y`, `zz`/`zt`/`zb`, `Ctrl-E`/`Ctrl-Y`, `Esc`. They're normal focus-scoped
+`BINDINGS` — subclass FlowView and override them to rebind; the keybinding policy
+stays yours. See `examples/copy_mode.py`.
+
+`copy_scrolloff` keeps N rows of context above/below the cursor (vim
+`scrolloff`); the view scrolls early to preserve it. It's capped at half the
+viewport, so **`flow.copy_scrolloff = 999` pins the cursor to the centre** and
+scrolls the content under it. `Ctrl-E` / `Ctrl-Y` (`copy_scroll_line_down` /
+`copy_scroll_line_up`) scroll the view a row while the cursor stays on its buffer
+row until `scrolloff` forces it along.
 
 ## Rich renderables, indicators & animation
 

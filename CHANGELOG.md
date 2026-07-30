@@ -24,9 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `enter_copy_mode()` / `exit_copy_mode()` / `copy_mode`, with the motions as
   public methods/actions (`copy_cursor_move`, word / line / top-bottom moves,
   `copy_visual()` / `copy_visual_line()`, `copy_yank()`, `copy_scroll_*`) and
-  vim-like default bindings (`hjkl w b e 0 $ ^ gg G v V y zz zt zb Esc`) that are
-  live only while in copy mode and fully overridable. Yank copies exactly the
-  highlighted text. See `examples/copy_mode.py`.
+  vim-like default bindings (`hjkl w b e 0 $ ^ gg G v V y zz zt zb Ctrl-E Ctrl-Y
+  Esc`) that are live only while in copy mode and fully overridable. Yank copies
+  exactly the highlighted text. `copy_scrolloff` keeps N rows of context around
+  the cursor (999 pins it to the centre); `Ctrl-E`/`Ctrl-Y`
+  (`copy_scroll_line_down`/`up`) scroll the view without moving the cursor row.
+  See `examples/copy_mode.py`.
 - `FlowView.row_count` and `row_text(y)` — the content-row count and per-row
   text (the string a selection `Offset.x` indexes into), the primitives copy
   mode is built on.

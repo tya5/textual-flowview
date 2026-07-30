@@ -121,3 +121,46 @@ async def test_copy_mode_keys_bubble_when_inactive() -> None:
         app.flow.focus()
         await pilot.press("j", "k")
         assert pressed == ["j", "k"]  # reached the app, not consumed by FlowView
+
+
+@pytest.mark.asyncio
+async def test_copy_scrolloff_centers_cursor() -> None:
+    app = CopyApp([f"row {i}" for i in range(40)])
+    async with app.run_test(size=(30, 10)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        v.focus()
+        v.copy_scrolloff = 999  # pin to centre
+        v.enter_copy_mode()
+        await pilot.pause()
+        for _ in range(15):
+            await pilot.press("j")
+        await pilot.pause()
+        top = int(v.scroll_offset.y)
+        pos = v._tc_row - top
+        assert pos == v.content_size.height // 2  # cursor stays centred
+
+
+@pytest.mark.asyncio
+async def test_copy_scroll_line_keeps_cursor_row() -> None:
+    app = CopyApp([f"row {i}" for i in range(40)])
+    async with app.run_test(size=(30, 10)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        v.focus()
+        v.enter_copy_mode()  # scrolloff 0
+        await pilot.pause()
+        for _ in range(4):
+            await pilot.press("j")  # cursor to row 4, still on screen
+        row = v._tc_row
+        top = int(v.scroll_offset.y)
+        await pilot.press("ctrl+e")  # scroll view down 1; cursor row unchanged
+        await pilot.pause()
+        assert int(v.scroll_offset.y) == top + 1
+        assert v._tc_row == row
+        await pilot.press("ctrl+y")  # scroll back up
+        await pilot.pause()
+        assert int(v.scroll_offset.y) == top
+        assert v._tc_row == row
