@@ -249,6 +249,22 @@ class FlowView(ScrollView, Generic[T]):
         def control(self) -> FlowView[Any]:
             return self.flow_view
 
+    class CopyModeChanged(Message):
+        """Posted when copy mode is entered or left (``copy_mode`` is the new
+        state). Entry is consumer-initiated, but exit is often ``Esc`` inside the
+        widget — handle this to keep app chrome (status line, conflicting keys) in
+        sync without polling.
+        """
+
+        def __init__(self, flow_view: FlowView[Any], copy_mode: bool) -> None:
+            self.flow_view = flow_view
+            self.copy_mode = copy_mode
+            super().__init__()
+
+        @property
+        def control(self) -> FlowView[Any]:
+            return self.flow_view
+
     def __init__(
         self,
         *,
@@ -261,6 +277,7 @@ class FlowView(ScrollView, Generic[T]):
         selectable: bool = False,
         highlight: bool = False,
         copy_scrolloff: int = 0,
+        clipboard: Callable[[str], bool | None] | None = None,
         sticky_header: Callable[[Entry[T]], bool] | None = None,
         anchor: Anchor = Anchor.CURRENT,
         estimated_height: int = 1,
@@ -378,6 +395,7 @@ class FlowView(ScrollView, Generic[T]):
         # view scrolls early to preserve it. Capped at half the viewport, so a
         # large value (e.g. 999) pins the cursor to the centre.
         self._copy_scrolloff = max(0, copy_scrolloff)
+        self._clipboard = clipboard
         # Per-entry visibility observers: acquire/release a user resource as the
         # entry enters/leaves the viewport (the general lifecycle hook).
         self._observers: dict[int, list[_VisibilityObserver[T]]] = {}
@@ -813,6 +831,7 @@ class FlowView(ScrollView, Generic[T]):
         self._tc_line_visual = False
         self._tc_pending = ""
         self._render_copy_cursor()
+        self.post_message(self.CopyModeChanged(self, True))
 
     def exit_copy_mode(self) -> None:
         """Leave copy mode and clear its selection."""
@@ -825,6 +844,7 @@ class FlowView(ScrollView, Generic[T]):
         if selections.pop(self, None) is not None:
             self.screen.selections = selections
         self.refresh()
+        self.post_message(self.CopyModeChanged(self, False))
 
     def toggle_copy_mode(self) -> None:
         self.exit_copy_mode() if self._copy_mode else self.enter_copy_mode()
@@ -945,12 +965,28 @@ class FlowView(ScrollView, Generic[T]):
             self._tc_line_visual = True
         self._render_copy_cursor()
 
+    def write_clipboard(self, text: str) -> bool:
+        """Send ``text`` to the clipboard, returning whether it was written.
+
+        The default uses Textual's ``App.copy_to_clipboard`` — the terminal's
+        **OSC 52** escape, which does *not* work on macOS Terminal and can be
+        swallowed by tmux/ssh, with **no acknowledgement** (so the default
+        optimistically returns ``True``). Pass ``clipboard=`` (a
+        ``Callable[[str], bool | None]``) or override this to plug in a reliable
+        local sink (``pbcopy`` / ``xclip`` / ``wl-copy``) whose result *can* be
+        observed — a per-view seam, so you needn't override app-wide copy."""
+        if self._clipboard is not None:
+            return bool(self._clipboard(text))
+        self.app.copy_to_clipboard(text)
+        return True
+
     def copy_yank(self) -> str:
         """Copy the current selection to the clipboard and return it; clears the
-        visual selection (stays in copy mode)."""
+        visual selection (stays in copy mode). Routes through
+        :meth:`write_clipboard` (OSC 52 by default — see its caveats)."""
         text = self.screen.get_selected_text() or ""
         if text:
-            self.app.copy_to_clipboard(text)
+            self.write_clipboard(text)
         self._tc_anchor = None
         self._tc_line_visual = False
         self._render_copy_cursor()

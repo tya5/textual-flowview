@@ -79,7 +79,15 @@ class CopyModeApp(App):
 
     def action_copy(self) -> None:
         self.view.enter_copy_mode()
-        self.sub_title = "copy mode — h/j/k/l move · v select · y yank · Esc leave"
+
+    def on_flow_view_copy_mode_changed(self, event: FlowView.CopyModeChanged) -> None:
+        # Keep the chrome in sync on both edges — including the Esc exit that
+        # happens inside the widget.
+        self.sub_title = (
+            "copy mode — h/j/k/l move · v select · y yank · Esc leave"
+            if event.copy_mode
+            else "copy mode — press c"
+        )
 
 
 if __name__ == "__main__":

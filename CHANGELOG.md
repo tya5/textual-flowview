@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Copy-mode clipboard is now pluggable: `FlowView(clipboard=...)` or an
+  overridable `write_clipboard(text) -> bool`. The default still uses OSC 52
+  (`App.copy_to_clipboard`), but a consumer can supply a reliable local sink
+  (`pbcopy`/`xclip`/`wl-copy`) whose result is observable — a per-view seam
+  instead of overriding app-wide copy. OSC 52's caveats (macOS Terminal, tmux,
+  no ack) are now documented (#7).
+- `FlowView.CopyModeChanged` message, posted on entering and leaving copy mode
+  (`copy_mode` is the new state) — so app chrome can track the mode, including
+  the `Esc` exit that happens inside the widget, without polling (#8).
+
 ## [0.7.0] - 2026-07-30
 
 ### Changed

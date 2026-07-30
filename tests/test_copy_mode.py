@@ -319,3 +319,54 @@ async def test_copy_search_word_under_cursor() -> None:
         assert v._copy_query == "apple"
         assert v._tc_row == 1  # "cherry apple"
         assert v.row_text(1)[v._tc_col:v._tc_col + 5] == "apple"
+
+
+@pytest.mark.asyncio
+async def test_copy_yank_uses_clipboard_hook() -> None:
+    # #7: a per-view clipboard sink receives the yank (instead of only OSC 52),
+    # and its result is observable.
+    sink: list[str] = []
+
+    class HookApp(CopyApp):
+        def compose(self) -> ComposeResult:
+            self.flow = FlowView(
+                model=self.model, presenter=RowPresenter(), spacing=0,
+                estimated_height=1, clipboard=lambda s: sink.append(s) or True,
+            )
+            yield self.flow
+
+    app = HookApp(["hello world", "second"])
+    async with app.run_test(size=(30, 6)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        v.focus()
+        v.enter_copy_mode()
+        await pilot.pause()
+        await pilot.press("v", "l", "l", "l", "l")  # "hello"
+        assert v.copy_yank() == "hello"
+        assert sink == ["hello"]
+        assert app.copied == []                      # did NOT go through OSC 52
+        assert v.write_clipboard("x") is True
+
+
+@pytest.mark.asyncio
+async def test_copy_mode_changed_message() -> None:
+    # #8: enter/exit both post CopyModeChanged.
+    events: list[bool] = []
+
+    class ModeApp(CopyApp):
+        def on_flow_view_copy_mode_changed(self, e: FlowView.CopyModeChanged) -> None:
+            events.append(e.copy_mode)
+
+    app = ModeApp(["a", "b"])
+    async with app.run_test(size=(20, 4)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        v.focus()
+        v.enter_copy_mode()
+        await pilot.pause()
+        await pilot.press("escape")                  # library-side exit
+        await pilot.pause()
+        assert events == [True, False]

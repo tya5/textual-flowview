@@ -525,6 +525,19 @@ selection, then next/prev), `zz`/`zt`/`zb`, `Ctrl-E`/`Ctrl-Y`, `Esc`. They're
 normal focus-scoped `BINDINGS` — subclass FlowView and override them to rebind;
 the keybinding policy stays yours. See `examples/copy_mode.py`.
 
+**Clipboard.** Yank goes through `write_clipboard()`, which by default uses
+Textual's `App.copy_to_clipboard` — the terminal's **OSC 52** escape. That does
+**not** work on macOS Terminal and can be swallowed by tmux/ssh, with no
+acknowledgement. For a reliable path, pass `clipboard=` (a
+`Callable[[str], bool | None]`) or override `write_clipboard` to shell out to
+`pbcopy` / `xclip` / `wl-copy` — a per-view seam, so you don't override app-wide
+copy, and the sink's result is observable.
+
+**Mode changes.** `FlowView.CopyModeChanged` is posted on both entering and
+leaving copy mode (`event.copy_mode` is the new state) — handle it to keep your
+status line / conflicting keys in sync, especially the `Esc` exit that happens
+inside the widget.
+
 **Search the selection.** `copy_search_selection()` (default `*`) searches for
 the current visual selection — or the word under the cursor if there's no
 selection — and jumps to the next occurrence; `copy_search_next()` / `previous()`
