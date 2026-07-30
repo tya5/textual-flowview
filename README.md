@@ -495,6 +495,35 @@ FlowView > .flowview--highlight { background: $accent 30%; }
 
 See `examples/highlight.py`.
 
+## Copy mode (a vim-style text cursor)
+
+An opt-in **copy mode** puts a character cursor over the rendered content — move
+it across entries, make a visual selection, and yank, like tmux copy-mode / vim
+visual. It's drawn with the widget's own text selection, so a yank copies exactly
+what's highlighted.
+
+```python
+flow = FlowView(model=..., presenter=...)
+
+class MyApp(App):
+    BINDINGS = [("c", "start_copy", "Copy mode")]
+    def action_start_copy(self) -> None:
+        self.query_one(FlowView).enter_copy_mode()
+```
+
+Every motion is a **public method** (and an action the default keys map onto):
+`copy_cursor_move`, `copy_cursor_line_start` / `line_end` / `first_nonblank`,
+`copy_cursor_word_forward` / `word_back` / `word_end`, `copy_cursor_top` /
+`bottom`, `copy_visual()` / `copy_visual_line()`, `copy_yank()`,
+`copy_scroll_center` / `top` / `bottom`, and `enter_copy_mode()` /
+`exit_copy_mode()` / `copy_mode`.
+
+The default keys are vim-like and **live only while in copy mode** (they bubble
+to your app otherwise): `h`/`j`/`k`/`l`, `w`/`b`/`e`, `0`/`$`/`^`, `gg`/`G`, `v`,
+`V`, `y`, `zz`/`zt`/`zb`, `Esc`. They're normal focus-scoped `BINDINGS` — subclass
+FlowView and override them to rebind; the keybinding policy stays yours. See
+`examples/copy_mode.py`.
+
 ## Rich renderables, indicators & animation
 
 An entry's view is a plain **`rich.console.RenderableType`** — the same type a
@@ -700,6 +729,7 @@ PYTHONPATH=src python examples/intervention.py    # clickable in-flow selector
 PYTHONPATH=src python examples/gutters.py         # two gutters: unread (left) + age (right)
 PYTHONPATH=src python examples/scroll_anim.py     # animated jumps, redirect, stop-in-place
 PYTHONPATH=src python examples/highlight.py        # opt-in keyboard highlight (↑/↓ + Enter)
+PYTHONPATH=src python examples/copy_mode.py        # vim-style text cursor: c, then hjkl/v/y
 PYTHONPATH=src python examples/infinite.py        # infinite scroll: lazy-load older history
 PYTHONPATH=src python examples/progress.py        # Rich Spinner + ProgressBar in entries
 PYTHONPATH=src python examples/minimap.py         # minimap replacing the scrollbar

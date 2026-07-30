@@ -1,0 +1,123 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import ClassVar
+
+import pytest
+from rich.text import Text
+from textual.app import App, ComposeResult
+from textual.binding import BindingType
+
+from textual_flowview import FlowModel, FlowView, Presentation
+
+
+@dataclass
+class Row:
+    text: str
+
+
+class RowPresenter:
+    async def present(self, item: Row, width: int) -> Presentation:
+        return Presentation(height=1, renderable=Text(item.text))
+
+
+class CopyApp(App):
+    def __init__(self, lines: list[str]) -> None:
+        super().__init__()
+        self.model: FlowModel[Row] = FlowModel()
+        for line in lines:
+            self.model.append(Row(line))
+        self.copied: list[str] = []
+
+    def compose(self) -> ComposeResult:
+        self.flow = FlowView(
+            model=self.model, presenter=RowPresenter(), spacing=0, estimated_height=1
+        )
+        yield self.flow
+
+    def copy_to_clipboard(self, text: str) -> None:  # capture yanks
+        self.copied.append(text)
+
+
+@pytest.mark.asyncio
+async def test_copy_mode_motions_and_yank() -> None:
+    app = CopyApp(["alpha beta gamma", "second row", "third and last"])
+    async with app.run_test(size=(40, 6)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        v.focus()
+
+        # keys do nothing until copy mode is entered (they bubble)
+        await pilot.press("l", "l")
+        assert (v._tc_row, v._tc_col) == (0, 0)
+        assert not v.copy_mode
+
+        v.enter_copy_mode()
+        await pilot.pause()
+        assert v.copy_mode
+        await pilot.press("l", "l", "l")           # col -> 3
+        assert (v._tc_row, v._tc_col) == (0, 3)
+        await pilot.press("j")                       # row -> 1
+        assert v._tc_row == 1
+        await pilot.press("dollar_sign")             # end of "second row" (len 10)
+        assert v._tc_col == len(v.row_text(1)) - 1
+        await pilot.press("0")
+        assert v._tc_col == 0
+        await pilot.press("G")                       # last row
+        assert v._tc_row == v.row_count - 1
+        await pilot.press("g", "g")                  # back to top (two-key)
+        assert v._tc_row == 0
+
+        # visual select "alpha" and yank
+        await pilot.press("0")
+        await pilot.press("v", "l", "l", "l", "l")   # cols 0..4 inclusive
+        await pilot.press("y")
+        assert app.copied[-1] == "alpha"
+        # yank clears the visual selection but stays in copy mode
+        assert v.copy_mode and v._tc_anchor is None
+
+        await pilot.press("escape")
+        assert not v.copy_mode
+        assert app.screen.selections.get(v) is None
+
+
+@pytest.mark.asyncio
+async def test_copy_mode_visual_line_yanks_whole_rows() -> None:
+    app = CopyApp(["line one", "line two", "line three"])
+    async with app.run_test(size=(40, 6)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        v.focus()
+        v.enter_copy_mode()
+        await pilot.pause()
+        await pilot.press("l", "l")          # move off column 0
+        await pilot.press("V")               # line-visual from row 0
+        await pilot.press("j")               # extend to row 1
+        await pilot.press("y")
+        assert app.copied[-1] == "line one\nline two"
+
+
+@pytest.mark.asyncio
+async def test_copy_mode_keys_bubble_when_inactive() -> None:
+    # A consumer that binds j/k for its own use isn't shadowed while copy mode
+    # is off.
+    pressed: list[str] = []
+
+    class BindApp(CopyApp):
+        BINDINGS: ClassVar[list[BindingType]] = [
+            ("j", "mark('j')", "j"),
+            ("k", "mark('k')", "k"),
+        ]
+
+        def action_mark(self, key: str) -> None:
+            pressed.append(key)
+
+    app = BindApp(["a", "b"])
+    async with app.run_test(size=(20, 4)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        app.flow.focus()
+        await pilot.press("j", "k")
+        assert pressed == ["j", "k"]  # reached the app, not consumed by FlowView

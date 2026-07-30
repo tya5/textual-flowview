@@ -11,7 +11,7 @@ from rich.style import Style
 from rich.text import Text
 from textual import events
 from textual.binding import Binding, BindingType
-from textual.geometry import Size
+from textual.geometry import Offset, Size
 from textual.message import Message
 from textual.scroll_view import ScrollView
 from textual.selection import Selection
@@ -129,6 +129,23 @@ class FlowView(ScrollView, Generic[T]):
         Binding("end", "highlight_end", "Highlight to last", show=False),
         Binding("enter", "activate", "Activate", show=False),
         Binding("space", "activate", "Activate", show=False),
+        # Copy-mode (vim-like) — live only while in copy mode (see check_action),
+        # so these keys bubble to the app otherwise. Rebind/clear as usual.
+        Binding("h", "copy_left", "Left", show=False),
+        Binding("l", "copy_right", "Right", show=False),
+        Binding("k", "copy_up", "Up", show=False),
+        Binding("j", "copy_down", "Down", show=False),
+        Binding("0", "copy_line_start", "Line start", show=False),
+        Binding("dollar_sign", "copy_line_end", "Line end", show=False),
+        Binding("circumflex_accent", "copy_first_nonblank", "First non-blank", show=False),
+        Binding("w", "copy_word_forward", "Word →", show=False),
+        Binding("b", "copy_word_back", "Word ←", show=False),
+        Binding("e", "copy_word_end", "Word end", show=False),
+        Binding("G", "copy_bottom", "Bottom", show=False),
+        Binding("v", "copy_visual", "Visual", show=False),
+        Binding("V", "copy_visual_line", "Visual line", show=False),
+        Binding("y", "copy_yank", "Yank", show=False),
+        Binding("escape", "copy_exit", "Exit copy mode", show=False),
     ]
 
     class Selected(Message):
@@ -335,6 +352,15 @@ class FlowView(ScrollView, Generic[T]):
         # fall through to scrolling and enter/space bubble (see check_action).
         self._highlight_enabled = highlight
         self._highlighted: Entry[T] | None = None
+        # Text/copy cursor mode (vim-like): a character cursor over the rendered
+        # content, drawn via the widget's own text selection. Entered at runtime
+        # (enter_copy_mode); the motion keys are default bindings gated on it.
+        self._copy_mode = False
+        self._tc_row = 0
+        self._tc_col = 0
+        self._tc_anchor: tuple[int, int] | None = None  # visual-mode start (row, col)
+        self._tc_line_visual = False
+        self._tc_pending = ""  # multi-key prefix in copy-mode ("g" or "z")
         # Per-entry visibility observers: acquire/release a user resource as the
         # entry enters/leaves the viewport (the general lifecycle hook).
         self._observers: dict[int, list[_VisibilityObserver[T]]] = {}
@@ -628,6 +654,10 @@ class FlowView(ScrollView, Generic[T]):
         # scrolling (below), preserving the default scroll behaviour.
         if action == "activate" and not self._highlight_enabled:
             return False
+        # Copy-mode motions are live only while in copy mode; otherwise their
+        # keys bubble to the app untouched.
+        if action.startswith("copy_") and not self._copy_mode:
+            return False
         return True
 
     def highlight_entry(self, entry: Entry[T] | None) -> None:
@@ -710,6 +740,245 @@ class FlowView(ScrollView, Generic[T]):
 
     def action_activate(self) -> None:
         self.activate()
+
+    # -- copy mode (a vim-like text cursor over the content) ---------------
+
+    @property
+    def copy_mode(self) -> bool:
+        """Whether the text/copy cursor mode is active."""
+        return self._copy_mode
+
+    def enter_copy_mode(self) -> None:
+        """Start copy mode: a character cursor you move over the rendered text
+        (the motions below), with a visual selection and yank. Drawn via the
+        widget's own text selection. Bind a key to this — the motion keys are
+        default, overridable bindings that are live only while in copy mode."""
+        if self._copy_mode:
+            return
+        self._copy_mode = True
+        self._sync_scroll()
+        self._tc_row = max(0, min(int(self.scroll_offset.y), self.row_count - 1))
+        self._tc_col = 0
+        self._tc_anchor = None
+        self._tc_line_visual = False
+        self._tc_pending = ""
+        self._render_copy_cursor()
+
+    def exit_copy_mode(self) -> None:
+        """Leave copy mode and clear its selection."""
+        if not self._copy_mode:
+            return
+        self._copy_mode = False
+        self._tc_anchor = None
+        self._tc_pending = ""
+        selections = dict(self.screen.selections)
+        if selections.pop(self, None) is not None:
+            self.screen.selections = selections
+        self.refresh()
+
+    def toggle_copy_mode(self) -> None:
+        self.exit_copy_mode() if self._copy_mode else self.enter_copy_mode()
+
+    # -- copy-mode motions (public; the real API keys map onto) ------------
+
+    def copy_cursor_move(self, d_row: int = 0, d_col: int = 0) -> None:
+        """Move the text cursor by ``d_row`` rows / ``d_col`` columns (clamped)."""
+        self._tc_row += d_row
+        self._tc_col += d_col
+        self._render_copy_cursor()
+
+    def copy_cursor_line_start(self) -> None:
+        self._tc_col = 0
+        self._render_copy_cursor()
+
+    def copy_cursor_line_end(self) -> None:
+        self._tc_col = max(0, len(self.row_text(self._tc_row)) - 1)
+        self._render_copy_cursor()
+
+    def copy_cursor_first_nonblank(self) -> None:
+        text = self.row_text(self._tc_row)
+        self._tc_col = next((i for i, ch in enumerate(text) if not ch.isspace()), 0)
+        self._render_copy_cursor()
+
+    def copy_cursor_top(self) -> None:
+        self._tc_row = 0
+        self._render_copy_cursor()
+
+    def copy_cursor_bottom(self) -> None:
+        self._tc_row = self.row_count - 1
+        self._render_copy_cursor()
+
+    def _word_bounds(self, text: str) -> list[tuple[int, int]]:
+        words, i, n = [], 0, len(text)
+        while i < n:
+            if text[i].isspace():
+                i += 1
+                continue
+            start = i
+            while i < n and not text[i].isspace():
+                i += 1
+            words.append((start, i - 1))
+        return words
+
+    def copy_cursor_word_forward(self) -> None:
+        words = self._word_bounds(self.row_text(self._tc_row))
+        nxt = next((s for s, _ in words if s > self._tc_col), None)
+        if nxt is not None:
+            self._tc_col = nxt
+        self._render_copy_cursor()
+
+    def copy_cursor_word_back(self) -> None:
+        words = self._word_bounds(self.row_text(self._tc_row))
+        prev = next((s for s, _ in reversed(words) if s < self._tc_col), None)
+        if prev is not None:
+            self._tc_col = prev
+        self._render_copy_cursor()
+
+    def copy_cursor_word_end(self) -> None:
+        words = self._word_bounds(self.row_text(self._tc_row))
+        nxt = next((e for _, e in words if e > self._tc_col), None)
+        if nxt is not None:
+            self._tc_col = nxt
+        self._render_copy_cursor()
+
+    def copy_visual(self) -> None:
+        """Toggle a character-wise visual selection anchored at the cursor."""
+        self._tc_line_visual = False
+        self._tc_anchor = None if self._tc_anchor is not None else (self._tc_row, self._tc_col)
+        self._render_copy_cursor()
+
+    def copy_visual_line(self) -> None:
+        """Toggle a line-wise visual selection anchored at the cursor row."""
+        if self._tc_anchor is not None and self._tc_line_visual:
+            self._tc_anchor = None
+            self._tc_line_visual = False
+        else:
+            self._tc_anchor = (self._tc_row, self._tc_col)
+            self._tc_line_visual = True
+        self._render_copy_cursor()
+
+    def copy_yank(self) -> str:
+        """Copy the current selection to the clipboard and return it; clears the
+        visual selection (stays in copy mode)."""
+        text = self.screen.get_selected_text() or ""
+        if text:
+            self.app.copy_to_clipboard(text)
+        self._tc_anchor = None
+        self._tc_line_visual = False
+        self._render_copy_cursor()
+        return text
+
+    def copy_scroll_center(self) -> None:
+        self.scroll_to(y=self._tc_row - self.content_size.height // 2, animate=False)
+        self._render_copy_cursor()
+
+    def copy_scroll_top(self) -> None:
+        self.scroll_to(y=self._tc_row, animate=False)
+        self._render_copy_cursor()
+
+    def copy_scroll_bottom(self) -> None:
+        self.scroll_to(y=self._tc_row - self.content_size.height + 1, animate=False)
+        self._render_copy_cursor()
+
+    def _render_copy_cursor(self) -> None:
+        if not self._copy_mode:
+            return
+        rows = max(1, self.row_count)
+        self._tc_row = max(0, min(self._tc_row, rows - 1))
+        self._tc_col = max(0, min(self._tc_col, max(0, len(self.row_text(self._tc_row)) - 1)))
+        row, col = self._tc_row, self._tc_col
+        if self._tc_anchor is None:
+            sel = Selection(Offset(col, row), Offset(col + 1, row))
+        elif self._tc_line_visual:
+            (sy, _), (ey, _) = sorted([self._tc_anchor, (row, col)])
+            sel = Selection(Offset(0, sy), Offset(len(self.row_text(ey)), ey))
+        else:
+            (sy, sx), (ey, ex) = sorted([self._tc_anchor, (row, col)])
+            sel = Selection(Offset(sx, sy), Offset(ex + 1, ey))  # inclusive end cell
+        self.screen.selections = {self: sel}
+        self._reveal_row(row)
+
+    def _reveal_row(self, row: int) -> None:
+        top = int(self.scroll_offset.y)
+        height = self.content_size.height
+        if row < top:
+            self.scroll_to(y=row, animate=False)
+        elif row >= top + height:
+            self.scroll_to(y=row - height + 1, animate=False)
+
+    # -- copy-mode actions (default, overridable bindings map onto these) --
+
+    def action_copy_left(self) -> None:
+        self.copy_cursor_move(d_col=-1)
+
+    def action_copy_right(self) -> None:
+        self.copy_cursor_move(d_col=1)
+
+    def action_copy_up(self) -> None:
+        self.copy_cursor_move(d_row=-1)
+
+    def action_copy_down(self) -> None:
+        self.copy_cursor_move(d_row=1)
+
+    def action_copy_line_start(self) -> None:
+        self.copy_cursor_line_start()
+
+    def action_copy_line_end(self) -> None:
+        self.copy_cursor_line_end()
+
+    def action_copy_first_nonblank(self) -> None:
+        self.copy_cursor_first_nonblank()
+
+    def action_copy_bottom(self) -> None:
+        self.copy_cursor_bottom()
+
+    def action_copy_word_forward(self) -> None:
+        self.copy_cursor_word_forward()
+
+    def action_copy_word_back(self) -> None:
+        self.copy_cursor_word_back()
+
+    def action_copy_word_end(self) -> None:
+        self.copy_cursor_word_end()
+
+    def action_copy_visual(self) -> None:
+        self.copy_visual()
+
+    def action_copy_visual_line(self) -> None:
+        self.copy_visual_line()
+
+    def action_copy_yank(self) -> None:
+        self.copy_yank()
+
+    def action_copy_exit(self) -> None:
+        self.exit_copy_mode()
+
+    def on_key(self, event: events.Key) -> None:
+        # Two-key vim prefixes (gg, zz/zt/zb) while in copy mode. Single-key
+        # motions stay as normal, overridable BINDINGS.
+        if not self._copy_mode:
+            return
+        pending, self._tc_pending = self._tc_pending, ""
+        if pending == "g":
+            if event.key == "g":
+                self.copy_cursor_top()
+                event.stop()
+                event.prevent_default()
+            return
+        if pending == "z":
+            if event.key == "z":
+                self.copy_scroll_center()
+            elif event.key == "t":
+                self.copy_scroll_top()
+            elif event.key == "b":
+                self.copy_scroll_bottom()
+            event.stop()
+            event.prevent_default()
+            return
+        if event.key in ("g", "z"):
+            self._tc_pending = event.key
+            event.stop()
+            event.prevent_default()
 
     # -- viewport-scoped resource lifecycle --------------------------------
 

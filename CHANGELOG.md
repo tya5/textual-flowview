@@ -20,9 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Copy mode** — an opt-in vim-style text cursor over the rendered content:
+  `enter_copy_mode()` / `exit_copy_mode()` / `copy_mode`, with the motions as
+  public methods/actions (`copy_cursor_move`, word / line / top-bottom moves,
+  `copy_visual()` / `copy_visual_line()`, `copy_yank()`, `copy_scroll_*`) and
+  vim-like default bindings (`hjkl w b e 0 $ ^ gg G v V y zz zt zb Esc`) that are
+  live only while in copy mode and fully overridable. Yank copies exactly the
+  highlighted text. See `examples/copy_mode.py`.
 - `FlowView.row_count` and `row_text(y)` — the content-row count and per-row
-  text (the string a selection `Offset.x` indexes into), the primitives for
-  building a text/copy cursor on the selection API.
+  text (the string a selection `Offset.x` indexes into), the primitives copy
+  mode is built on.
 
 ## [0.6.2] - 2026-07-30
 
