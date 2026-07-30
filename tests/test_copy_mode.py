@@ -164,3 +164,41 @@ async def test_copy_scroll_line_keeps_cursor_row() -> None:
         await pilot.pause()
         assert int(v.scroll_offset.y) == top
         assert v._tc_row == row
+
+
+class HighlightCopyApp(CopyApp):
+    def compose(self) -> ComposeResult:
+        self.flow = FlowView(
+            model=self.model, presenter=RowPresenter(), spacing=1,
+            estimated_height=1, highlight=True,
+        )
+        yield self.flow
+
+
+@pytest.mark.asyncio
+async def test_copy_mode_unifies_with_entry_highlight() -> None:
+    # highlight=True + copy mode: one cursor. Entering copy mode starts on the
+    # highlighted entry; ↑/↓ jump by entry and the current entry (and the
+    # Highlighted state) follows the text cursor.
+    app = HighlightCopyApp(["msg a", "msg b", "msg c"])
+    async with app.run_test(size=(30, 12)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        v.focus()
+        es = list(app.model)
+
+        v.highlight_entry(es[1])          # highlight msg b
+        v.enter_copy_mode()               # starts on msg b
+        await pilot.pause()
+        assert v.entry_at_row(v._tc_row) is es[1]
+        assert v.highlighted is es[1]
+
+        await pilot.press("down")          # entry-jump -> msg c
+        await pilot.pause()
+        assert v.entry_at_row(v._tc_row) is es[2]
+        assert v.highlighted is es[2]
+
+        await pilot.press("up")            # entry-jump back -> msg b
+        await pilot.pause()
+        assert v.highlighted is es[1]

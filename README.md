@@ -531,6 +531,14 @@ scrolls the content under it. `Ctrl-E` / `Ctrl-Y` (`copy_scroll_line_down` /
 `copy_scroll_line_up`) scroll the view a row while the cursor stays on its buffer
 row until `scrolloff` forces it along.
 
+**Unified with the entry highlight.** With `highlight=True`, the copy cursor and
+the keyboard highlight are *one* position at two zoom levels: the current entry
+is `entry_at_row(cursor row)`. Entering copy mode starts on the highlighted
+entry; **↑/↓ move by entry** (the cursor jumps to the adjacent entry, via
+`copy_cursor_entry`) while **h/j/k/l move by character/row**, and the entry
+highlight and `Highlighted` message follow the cursor. So you can arrow to a
+message and then `v`-select its text in one flow.
+
 ## Rich renderables, indicators & animation
 
 An entry's view is a plain **`rich.console.RenderableType`** — the same type a

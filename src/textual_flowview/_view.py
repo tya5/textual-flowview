@@ -563,6 +563,13 @@ class FlowView(ScrollView, Generic[T]):
             return ""
         return self._content_row_text(y, self._content_width())
 
+    def entry_at_row(self, y: int) -> Entry[T] | None:
+        """The entry that owns content row ``y`` (``None`` for a spacer gap or an
+        out-of-range row). Ties the fine text/copy cursor to an entry — the
+        *current entry* is ``entry_at_row(text-cursor row)``."""
+        located = self._viewport.locate(y)
+        return self._viewport.entries[located[0]] if located is not None else None
+
     def scroll_to_top(
         self, *, animate: bool = False, duration: float | None = None
     ) -> None:
@@ -722,10 +729,22 @@ class FlowView(ScrollView, Generic[T]):
         return max(1, len(vr.entries) - 1)
 
     def action_highlight_up(self) -> None:
-        self.move_highlight(-1) if self._highlight_enabled else self.action_scroll_up()
+        # In copy mode ↑/↓ move by *entry* (the text cursor jumps to the
+        # adjacent entry's first row); the two granularities share one cursor.
+        if self._copy_mode:
+            self.copy_cursor_entry(-1)
+        elif self._highlight_enabled:
+            self.move_highlight(-1)
+        else:
+            self.action_scroll_up()
 
     def action_highlight_down(self) -> None:
-        self.move_highlight(1) if self._highlight_enabled else self.action_scroll_down()
+        if self._copy_mode:
+            self.copy_cursor_entry(1)
+        elif self._highlight_enabled:
+            self.move_highlight(1)
+        else:
+            self.action_scroll_down()
 
     def action_highlight_page_up(self) -> None:
         if self._highlight_enabled:
@@ -764,7 +783,13 @@ class FlowView(ScrollView, Generic[T]):
             return
         self._copy_mode = True
         self._sync_scroll()
-        self._tc_row = max(0, min(int(self.scroll_offset.y), self.row_count - 1))
+        # Start at the highlighted entry if there is one (unified cursor), else
+        # the top of the viewport.
+        start = None
+        if self._highlighted is not None:
+            start = self._viewport.offset_of(self._highlighted)
+        self._tc_row = start if start is not None else int(self.scroll_offset.y)
+        self._tc_row = max(0, min(self._tc_row, self.row_count - 1))
         self._tc_col = 0
         self._tc_anchor = None
         self._tc_line_visual = False
@@ -806,6 +831,22 @@ class FlowView(ScrollView, Generic[T]):
         text = self.row_text(self._tc_row)
         self._tc_col = next((i for i, ch in enumerate(text) if not ch.isspace()), 0)
         self._render_copy_cursor()
+
+    def copy_cursor_entry(self, delta: int) -> None:
+        """Jump the text cursor to the first row of the entry ``delta`` entries
+        away (↑/↓ in copy mode). Unifies the entry- and character-level cursor:
+        the current entry is always ``entry_at_row(row)``."""
+        entries = self._viewport.entries
+        if not entries:
+            return
+        cur = self.entry_at_row(self._tc_row)
+        idx = entries.index(cur) if cur in entries else 0
+        idx = max(0, min(idx + delta, len(entries) - 1))
+        off = self._viewport.offset_of(entries[idx])
+        if off is not None:
+            self._tc_row = off
+            self._tc_col = 0
+            self._render_copy_cursor()
 
     def copy_cursor_top(self) -> None:
         self._tc_row = 0
@@ -916,6 +957,16 @@ class FlowView(ScrollView, Generic[T]):
             (sy, sx), (ey, ex) = sorted([self._tc_anchor, (row, col)])
             sel = Selection(Offset(sx, sy), Offset(ex + 1, ey))  # inclusive end cell
         self.screen.selections = {self: sel}
+        # Unified cursor: the current entry follows the text cursor's row, so the
+        # entry highlight and Highlighted message stay in sync (only when the
+        # entry highlight is enabled — otherwise copy mode is a pure text cursor).
+        if self._highlight_enabled:
+            entry = self.entry_at_row(row)
+            # Keep the highlight on the last entry while crossing a spacer gap
+            # (entry_at_row is None there) — no flicker.
+            if entry is not None and entry is not self._highlighted:
+                self._highlighted = entry
+                self.post_message(self.Highlighted(self, entry))
         if reveal:
             self._reveal_row(row)
 
