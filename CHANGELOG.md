@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-30
+
 ### Changed
 
 - **Breaking:** the keyboard *cursor* (opt-in entry navigation from 0.6.0) is
@@ -189,7 +191,8 @@ First public release.
   `flowview--sticky-header` component classes are unstyled by default, and text
   selection defers to Textual's `screen--selection`. Style them in your app.
 
-[Unreleased]: https://github.com/tya5/textual-flowview/compare/v0.6.2...HEAD
+[Unreleased]: https://github.com/tya5/textual-flowview/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/tya5/textual-flowview/compare/v0.6.2...v0.7.0
 [0.6.2]: https://github.com/tya5/textual-flowview/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/tya5/textual-flowview/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/tya5/textual-flowview/compare/v0.5.0...v0.6.0
