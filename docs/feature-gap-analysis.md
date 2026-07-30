@@ -23,7 +23,7 @@ timelines, logs, notifications, mail, AI agent transcripts).
 | Two independent gutters (toggle, effective-width introspection), separators | ✅ |
 | **Infinite scroll — edge-reached callbacks to load more** | ✅ implemented — `ReachedTop` / `ReachedBottom` + `reach_threshold` (#1) |
 | **Prepend older items without losing scroll position** | ✅ works via anchor capture/restore; `insert_many` / `extend` batch it into one reflow; tested + documented (#2) |
-| Keyboard cursor navigation (↑↓/PgUp/PgDn/Home/End highlighted cursor, distinct from selection) | ✅ implemented — opt-in `cursor=True`, exposed as actions + overridable focus-scoped defaults (#3) |
+| Keyboard highlight navigation (↑↓/PgUp/PgDn/Home/End highlighted entry, distinct from selection) | ✅ implemented — opt-in `highlight=True`, exposed as actions + overridable focus-scoped defaults (#3) |
 | `scroll_to` alignment (center/end) | ✅ `scroll_to_entry(entry, align="start"/"center"/"end"/"nearest")` |
 | index-based `scroll_to_index` / `model[i]` | ✗ not added (ergonomic only — index jump already works via `entries[i]` / `list(model)[i]` + `scroll_to_entry`) |
 | Initial scroll position (`initialTopMostItemIndex` equivalent) | ✗ missing |
@@ -50,10 +50,10 @@ timelines, logs, notifications, mail, AI agent transcripts).
 
 **Medium**
 
-3. ~~Opt-in keyboard cursor navigation~~ — **done** (`cursor=True`). Exposed as
+3. ~~Opt-in keyboard highlight navigation~~ — **done** (`highlight=True`). Exposed as
    public actions/methods + messages; keys are focus-scoped, overridable
    defaults so the product keeps keybinding policy (arrows just scroll when
-   `cursor=False`).
+   `highlight=False`).
 4. **Scroll alignment** — **done** (`scroll_to_entry(..., align="start"/"center"/
    "end"/"nearest")`). Index-based `scroll_to_index` / `initial_index` were
    declined as ergonomic-only (index jump already works via `entries[i]` +
@@ -81,7 +81,7 @@ All High and Medium candidates are **shipped or explicitly declined**. What's
 left is the Low bucket (#7–#10), each with a working today-workaround; none is
 required for the target use cases. The survey is effectively complete.
 
-Shipped: scroll alignment · keyboard cursor · infinite scroll
+Shipped: scroll alignment · keyboard highlight · infinite scroll
 (`ReachedTop`/`ReachedBottom`, `reach_threshold`) · `insert_many`/`extend`
 (prepend-stable, single reflow) · empty state · animated jumps +
 `stop_scroll_animation` · `body_width` / effective gutter widths · `decorate()`

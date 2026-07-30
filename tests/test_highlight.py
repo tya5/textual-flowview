@@ -42,16 +42,16 @@ def _app(css: str, **kw) -> tuple[App, FlowModel[Row]]:
 
 @pytest.mark.asyncio
 async def test_undeclared_highlight_paints_nothing() -> None:
-    # Issue #5: an undeclared flowview--cursor must not paint the inherited
-    # background across the cursor row.
-    app, model = _app("FlowView { height: 1fr; }", cursor=True)
+    # Issue #5: an undeclared flowview--highlight must not paint the inherited
+    # background across the highlighted row.
+    app, model = _app("FlowView { height: 1fr; }", highlight=True)
     model.append(Row("A"))
     model.append(Row("B"))
     async with app.run_test(size=(20, 6)) as pilot:
         await pilot.pause()
         await pilot.pause()
         view = app.query_one(FlowView)
-        view.cursor_last()  # cursor on B
+        view.highlight_last()  # highlight on B
         await pilot.pause()
         assert _row_bgcolors(view, "B") == set()  # nothing painted
         assert _row_bgcolors(view, "A") == set()
@@ -63,9 +63,9 @@ async def test_declared_highlight_wins_over_presentation_background() -> None:
     # Presentation.background, not be swallowed by it.
     css = """
     FlowView { height: 1fr; }
-    FlowView > .flowview--cursor { background: #ff0000; }
+    FlowView > .flowview--highlight { background: #ff0000; }
     """
-    app, model = _app(css, cursor=True)
+    app, model = _app(css, highlight=True)
     model.append(Row("plain"))
     model.append(Row("tinted", bg="#1e222a"))
     async with app.run_test(size=(20, 6)) as pilot:
@@ -73,7 +73,7 @@ async def test_declared_highlight_wins_over_presentation_background() -> None:
         await pilot.pause()
         view = app.query_one(FlowView)
         for text in ("plain", "tinted"):
-            view.cursor_to(view.entries[0] if text == "plain" else view.entries[1])
+            view.highlight_entry(view.entries[0] if text == "plain" else view.entries[1])
             await pilot.pause()
             bgs = _row_bgcolors(view, text)
             assert bgs == {"Color('#ff0000', ColorType.TRUECOLOR, "

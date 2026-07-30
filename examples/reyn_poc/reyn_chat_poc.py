@@ -34,8 +34,17 @@ from rich.markdown import Markdown
 from rich.text import Text
 from textual import events
 from textual.app import App, ComposeResult
+from textual.containers import Horizontal
 from textual.message import Message
-from textual.widgets import Static, TextArea
+from textual.widget import Widget
+from textual.widgets import (
+    ContentSwitcher,
+    OptionList,
+    Static,
+    Tab,
+    Tabs,
+    TextArea,
+)
 
 from textual_flowview import (
     Anchor,
@@ -185,10 +194,11 @@ class ReynGutter:
     """Claude-Code-style gutter: a single colored ● per :class:`EntryState`.
 
     Implements the library's :class:`FlowDecorator` protocol directly
-    (``decorate(entry, width, height) -> RenderableType``) rather than
-    reusing ``StateDecorator``'s glyph set, because reyn's own renderer uses
-    one uniform ● dot colored by state — not a different glyph per state.
-    The user row's continuous background (gutter + body) is now handled by
+    (``decorate(entry, width, height) -> RenderableType``). Colour signals
+    STATE (dim / amber / green / red). The glyph signals ROLE: the **user**
+    row uses ``❯`` (Claude-Code / reyn convention, matching the input box's
+    own ``❯`` prompt); assistant / tool / status rows use the ``●`` dot.
+    The user row's continuous background (gutter + body) is handled by
     FlowView via ``Presentation.background`` — the gutter no longer paints its
     own background to match.
     """
@@ -202,8 +212,11 @@ class ReynGutter:
     }
 
     def decorate(self, entry: Entry[ConvItem], width: int, height: int) -> RenderableType:
+        item = entry.item
         color = self._STATE_COLOR.get(entry.state, _CC_DIM)
-        return Text("●".ljust(width), style=color)
+        is_user = item.kind == "message" and item.role == "user"
+        glyph = "❯" if is_user else "●"
+        return Text(glyph.ljust(width), style=color)
 
 
 # --------------------------------------------------------------------------
@@ -235,9 +248,85 @@ def hydrate_model(model: FlowModel[ConvItem], fixture_path: Path) -> None:
 # --------------------------------------------------------------------------
 
 
+# --------------------------------------------------------------------------
+# Bottom chrome (tab-drawer variant). Default = a slim status-values line + a
+# focusable menu row (CC/reyn-like). Press ↓ from the composer to focus the
+# menu; activating an item expands a drawer DOWNWARD. Interactive panes are
+# Textual OptionLists (Model / Agent / History / Menu — keyboard selection);
+# static readouts are plain Rich in a Static (Cost / Ctx / Help) — the
+# "Textual only where there's a selection" split.
+
+_MENU_TABS: list[tuple[str, str]] = [
+    ("model", "Model"),
+    ("agent", "Agent"),
+    ("history", "History"),
+    ("cost", "Cost"),
+    ("ctx", "Ctx"),
+    ("menu", "Menu"),
+    ("help", "Help"),
+]
+
+
+def _drawer_child(tab_id: str) -> Widget:
+    """Build the drawer pane for a menu item: an ``OptionList`` for the
+    interactive pickers, a plain-Rich ``Static`` for read-only readouts."""
+    if tab_id == "model":
+        return OptionList(
+            "sonnet   · active", "opus", "haiku", "gemini-2.5-flash-lite",
+            id="model",
+        )
+    if tab_id == "agent":
+        return OptionList(
+            "default   · active", "planner", "reviewer", "researcher",
+            id="agent",
+        )
+    if tab_id == "history":
+        return OptionList(
+            "1 · Can you find where the sandbox network gate lives…",
+            "2 · Add the negative witness — we need proof egress…",
+            id="history",
+        )
+    if tab_id == "menu":
+        return OptionList(
+            "/model — switch model",
+            "/agent — switch agent",
+            "/clear — clear conversation",
+            "/quit — exit",
+            id="menu",
+        )
+    if tab_id == "cost":
+        return Static(
+            Text.from_markup(
+                "[b]Usage · this session[/b]\n"
+                "  turn    $0.0000\n"
+                "  total   $0.0034\n"
+                "  tokens  1 180 in · 60 out"
+            ),
+            id="cost",
+        )
+    if tab_id == "ctx":
+        return Static(
+            Text.from_markup(
+                "[b]Context window[/b]\n"
+                "  1 240 / 200 000 tokens  (1%)\n"
+                "  ██▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁"
+            ),
+            id="ctx",
+        )
+    return Static(
+        Text.from_markup(
+            "[b]Shortcuts[/b]\n"
+            "  enter send · shift+enter newline\n"
+            "  ↓ focus menu · ← → move · enter open · esc close"
+        ),
+        id="help",
+    )
+
+
 class StatusLine(Static):
-    """Slim top status line — plain, not rich. Mirrors reyn's inline-REPL
-    top-of-screen status (session id / model / turn count)."""
+    """Slim bottom status bar — plain, not rich. Mirrors reyn's inline-REPL
+    bottom toolbar (model / agent / cost / ctx + key hints), which sits
+    BELOW the input — matching Claude Code and reyn (not a top-docked line)."""
 
 
 class Composer(TextArea):
@@ -284,46 +373,125 @@ class Composer(TextArea):
             start, end = self.selection
             self._replace_via_keyboard("\n", start, end)
             return
+        if event.key == "down":
+            # ↓ on the last line hands focus down to the menu row (CC/reyn-like:
+            # the composer is the default focus; ↓ steps into the chrome below).
+            row, _ = self.cursor_location
+            if row >= self.document.line_count - 1:
+                menubar = self.app.query(MenuBar)
+                if menubar:
+                    event.stop()
+                    event.prevent_default()
+                    menubar.first().focus()
+                    return
         await super()._on_key(event)
 
     def on_text_area_changed(self, event: TextArea.Changed) -> None:
         self._sync_height()
 
     def _sync_height(self) -> None:
-        # +2 for the top/bottom border rows; clamp to [1, MAX_ROWS] wrapped
-        # content rows so the composer auto-grows then internally scrolls.
+        # Clamp to [1, MAX_ROWS] wrapped content rows so the composer auto-grows
+        # then internally scrolls. The top/bottom rules live on the enclosing
+        # #inputrow now (so the ❯ gutter shares them), not on the TextArea.
         wrapped_rows = max(self.wrapped_document.height, 1)
-        self.styles.height = min(wrapped_rows, self.MAX_ROWS) + 2
+        self.styles.height = min(wrapped_rows, self.MAX_ROWS)
 
     def clear_and_reset(self) -> None:
         self.text = ""
         self._sync_height()
 
 
+class MenuBar(Tabs):
+    """Focusable horizontal menu row (the collapsed bottom chrome). ← → move
+    the highlight, **enter** opens the highlighted item's drawer, **↑/esc**
+    close it and hand focus back. Unlike a plain ``Tabs``, moving the
+    highlight does NOT open anything — selection is an explicit enter."""
+
+    class Selected(Message):
+        def __init__(self, tab_id: str) -> None:
+            self.tab_id = tab_id
+            super().__init__()
+
+    async def _on_key(self, event: events.Key) -> None:
+        if event.key == "enter":
+            event.stop()
+            event.prevent_default()
+            if self.active:
+                self.post_message(self.Selected(self.active))
+            return
+        if event.key in ("up", "escape"):
+            event.stop()
+            event.prevent_default()
+            self.post_message(self.Selected("__close__"))
+            return
+        await super()._on_key(event)
+
+
 class ReynChatPoc(App):
     TITLE = "reyn · textual-flowview PoC"
     CSS = """
     Screen { layout: vertical; }
-    StatusLine {
-        height: 1;
-        dock: top;
-        background: $panel;
-        color: $text-muted;
-        padding: 0 1;
-    }
     FlowView {
         height: 1fr;
         scrollbar-size-vertical: 0;
     }
     FlowView > .flowview--selected { background: $accent 25%; }
-    Composer {
-        dock: bottom;
-        height: 3;
+    /* A 1-row spacer (margin-top) sits between the conversation and the input.
+       The top/bottom rules live on the row so the ❯ gutter shares them; the
+       TextArea itself is borderless + edge-to-edge like CC / reyn. */
+    #inputrow {
+        height: auto;
         max-height: 8;
-        border: round $panel;
+        margin-top: 1;
+        border-top: solid #3d434f;
+        border-bottom: solid #3d434f;
     }
+    #inputgutter {
+        width: 2;
+        height: auto;
+        color: $text-muted;
+    }
+    Composer {
+        height: 3;
+        max-height: 6;
+        border: none;
+        padding: 0;
+    }
+    StatusLine {
+        height: 1;
+        color: $text-muted;
+        padding: 0 1;
+    }
+    MenuBar {
+        height: 1;
+        color: $text-muted;
+        padding: 0 1;
+    }
+    MenuBar:focus-within { color: $text; }
+    MenuBar Tab { padding: 0 1; }
+    /* No separator rule between the menu row and its drawer — they read as one
+       continuous, edge-to-edge block (the $panel background is the only cue). */
+    #drawer {
+        height: auto;
+        max-height: 12;
+        background: $panel;
+        padding: 0;
+    }
+    /* OptionList also ships an all-round default border — strip it so the
+       drawer content is edge-to-edge (full-width highlight rows). */
+    #drawer OptionList {
+        height: auto;
+        max-height: 12;
+        background: $panel;
+        border: none;
+        padding: 0;
+    }
+    #drawer Static { height: auto; padding: 1 0; }
     """
-    BINDINGS = [("ctrl+d", "demo_stream", "Stream a reply")]
+    BINDINGS = [
+        ("ctrl+d", "demo_stream", "Stream a reply"),
+        ("escape", "close_drawer", "Close drawer"),
+    ]
 
     def __init__(self, fixture_path: Path = CONVERSATION_FIXTURE) -> None:
         super().__init__()
@@ -332,7 +500,8 @@ class ReynChatPoc(App):
         self._turns = 0
 
     def compose(self) -> ComposeResult:
-        yield StatusLine("reyn-poc · session=demo · model=sonnet · turns=0")
+        # Vertical order = visual order (top→bottom): conversation, input, status.
+        # Status sits BELOW the input — matching CC and reyn's bottom toolbar.
         yield FlowView(
             model=self.conversation,
             presenter=ReynPresenter(),
@@ -340,17 +509,63 @@ class ReynChatPoc(App):
             gutter_width=2,
             anchor=Anchor.STICKY_BOTTOM,
         )
-        yield Composer(placeholder="Type a message — Enter to send, Shift+Enter for a newline…")
+        # Input row: a 2-col ❯ gutter (matching the conversation's gutter column
+        # and reyn/CC's prompt) + the borderless, edge-to-edge composer.
+        with Horizontal(id="inputrow"):
+            yield Static("❯", id="inputgutter")
+            yield Composer(placeholder="Type a message — Enter to send, Shift+Enter for a newline…")
+        # Bottom chrome: a slim status-values line + a focusable menu row; a
+        # drawer (ContentSwitcher) that stays collapsed until a menu item opens.
+        yield StatusLine(self._status_text())
+        yield MenuBar(*(Tab(label, id=tid) for tid, label in _MENU_TABS), id="menubar")
+        with ContentSwitcher(initial=None, id="drawer"):
+            for tid, _label in _MENU_TABS:
+                yield _drawer_child(tid)
 
     def on_mount(self) -> None:
         # Restore-on-restart: hydrate BEFORE any new interaction happens.
         hydrate_model(self.conversation, self.fixture_path)
         self._turns = len(self.conversation)
         self._refresh_status()
+        # Drawer starts collapsed — default chrome is just the two slim rows.
+        self.query_one("#drawer", ContentSwitcher).display = False
+
+    def _status_text(self) -> str:
+        # Mirror reyn's real bottom toolbar values (│-separated key/value). The
+        # menu *items* live in the focusable MenuBar row just below this.
+        return "model sonnet │ agent default │ cost $0.0000 │ ctx 1%"
 
     def _refresh_status(self) -> None:
-        status = self.query_one(StatusLine)
-        status.update(f"reyn-poc · session=demo · model=sonnet · turns={self._turns}")
+        self.query_one(StatusLine).update(self._status_text())
+
+    def _open_drawer(self, tab_id: str | None) -> None:
+        """Expand/collapse the downward drawer. ``None`` collapses and returns
+        focus to the composer; a tab id shows that pane (focusing the
+        OptionList when the pane is an interactive picker)."""
+        drawer = self.query_one("#drawer", ContentSwitcher)
+        if tab_id is None or tab_id == "__close__":
+            drawer.display = False
+            drawer.current = None
+            self.query_one(Composer).focus()
+            return
+        drawer.current = tab_id
+        drawer.display = True
+        child = drawer.query_one(f"#{tab_id}")
+        if isinstance(child, OptionList):
+            child.focus()
+
+    def on_menu_bar_selected(self, event: MenuBar.Selected) -> None:
+        self._open_drawer(None if event.tab_id == "__close__" else event.tab_id)
+
+    def on_option_list_option_selected(
+        self, event: OptionList.OptionSelected
+    ) -> None:
+        # A real impl would apply the picked model/agent/etc.; the PoC just
+        # collapses back to the composer.
+        self._open_drawer(None)
+
+    def action_close_drawer(self) -> None:
+        self._open_drawer(None)
 
     async def on_composer_submitted(self, event: Composer.Submitted) -> None:
         text = event.value.strip()

@@ -459,40 +459,41 @@ The highlight is the `flowview--selected` component class, which FlowView leaves
 FlowView > .flowview--selected { background: $accent 30%; }
 ```
 
-## Keyboard cursor
+## Keyboard highlight (navigable current entry)
 
-`cursor=True` turns on an opt-in **keyboard cursor** — a highlighted "current
-entry" you drive with the keyboard, distinct from mouse selection and text
-selection:
+`highlight=True` turns on an opt-in **keyboard highlight** — a highlighted
+"current entry" you drive with the keyboard, distinct from mouse selection and
+text selection. (It's the *entry*-level highlight, à la `OptionList`; "cursor" is
+reserved for a per-character text cursor.)
 
 ```python
-flow = FlowView(model=..., presenter=..., cursor=True)
+flow = FlowView(model=..., presenter=..., highlight=True)
 
 class MyApp(App):
     def on_flow_view_highlighted(self, event: FlowView.Highlighted) -> None:
         ...  # event.entry is the newly highlighted entry (or None)
     def on_flow_view_activated(self, event: FlowView.Activated) -> None:
-        do_something(event.entry)   # Enter / Space on the cursor entry
+        do_something(event.entry)   # Enter / Space on the highlighted entry
 ```
 
-- **↑/↓** move the cursor one *entry* at a time (the view follows it), **PageUp/
-  PageDown** by a page, **Home/End** to the first/last entry, **Enter/Space**
-  activate it. `move_cursor(delta)`, `cursor_to(entry)`, `cursor_first()` /
-  `cursor_last()`, `activate()`, and the `cursor` property are the API those keys
-  call.
-- Keybindings are the **product's** to own. FlowView exposes the cursor as
+- **↑/↓** move the highlight one *entry* at a time (the view follows it),
+  **PageUp/PageDown** by a page, **Home/End** to the first/last entry,
+  **Enter/Space** activate it. `move_highlight(delta)`, `highlight_entry(entry)`,
+  `highlight_first()` / `highlight_last()`, `activate()`, and the `highlighted`
+  property are the API those keys call.
+- Keybindings are the **product's** to own. FlowView exposes the highlight as
   *actions* and ships only **focus-scoped, overridable defaults** for them — no
   product-level or priority bindings. Rebind or clear them like any Textual
-  widget's `BINDINGS`. With `cursor=False` (the default) the arrow / page / home
-  / end keys just scroll, and Enter/Space bubble to your app untouched.
-- The cursor row is the `flowview--cursor` component class — **unstyled by
-  default** (FlowView holds no colours), so give it one:
+  widget's `BINDINGS`. With `highlight=False` (the default) the arrow / page /
+  home / end keys just scroll, and Enter/Space bubble to your app untouched.
+- The highlighted row is the `flowview--highlight` component class — **unstyled
+  by default** (FlowView holds no colours), so give it one:
 
 ```css
-FlowView > .flowview--cursor { background: $accent 30%; }
+FlowView > .flowview--highlight { background: $accent 30%; }
 ```
 
-See `examples/cursor.py`.
+See `examples/highlight.py`.
 
 ## Rich renderables, indicators & animation
 
@@ -665,7 +666,7 @@ viewport: `"start"` (top, the default), `"center"`, `"end"` (bottom), or
 `"nearest"` (minimal scroll — the same as `ensure_visible`). Center a search hit
 so its context is visible: `flow.scroll_to_entry(hit, align="center")`.
 | `select(entry)` / `clear_selection()` | Change selection. |
-| `move_cursor(delta)` / `cursor_to(entry)` / `cursor_first()` / `cursor_last()` / `activate()` / `cursor` | Keyboard cursor (`cursor=True`). |
+| `move_highlight(delta)` / `highlight_entry(entry)` / `highlight_first()` / `highlight_last()` / `activate()` / `highlighted` | Keyboard highlight (`highlight=True`). |
 | `find(pred)` / `find_next(pred)` / `find_previous(pred)` | Search entries. |
 | `entry_text(entry)` / `copy_entry(entry)` | Get / copy an entry's rendered text. |
 
@@ -698,7 +699,7 @@ PYTHONPATH=src python examples/groups.py          # collapsible groups + sticky 
 PYTHONPATH=src python examples/intervention.py    # clickable in-flow selector
 PYTHONPATH=src python examples/gutters.py         # two gutters: unread (left) + age (right)
 PYTHONPATH=src python examples/scroll_anim.py     # animated jumps, redirect, stop-in-place
-PYTHONPATH=src python examples/cursor.py          # opt-in keyboard cursor (↑/↓ + Enter)
+PYTHONPATH=src python examples/highlight.py        # opt-in keyboard highlight (↑/↓ + Enter)
 PYTHONPATH=src python examples/infinite.py        # infinite scroll: lazy-load older history
 PYTHONPATH=src python examples/progress.py        # Rich Spinner + ProgressBar in entries
 PYTHONPATH=src python examples/minimap.py         # minimap replacing the scrollbar

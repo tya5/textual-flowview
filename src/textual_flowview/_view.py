@@ -98,14 +98,14 @@ class FlowView(ScrollView, Generic[T]):
     COMPONENT_CLASSES: ClassVar[set[str]] = {
         "flowview--selected",
         "flowview--sticky-header",
-        "flowview--cursor",
+        "flowview--highlight",
     }
     """
     | Class | Applied to |
     | :- | :- |
     | ``flowview--selected`` | The currently selected entry's rows. |
     | ``flowview--sticky-header`` | The pinned sticky header's rows. |
-    | ``flowview--cursor`` | The keyboard-cursor entry's rows (``cursor=True``). |
+    | ``flowview--highlight`` | The keyboard-highlight entry's rows (``highlight=True``). |
 
     FlowView ships **no colours of its own** — these classes are unstyled by
     default, so nothing is painted until your app (or theme) gives them a style
@@ -115,18 +115,18 @@ class FlowView(ScrollView, Generic[T]):
     to Textual's ``screen--selection``.
     """
 
-    # Focus-scoped, overridable defaults. They map keys onto the cursor
-    # *actions* (the real API); with ``cursor=False`` the arrow / page / home /
+    # Focus-scoped, overridable defaults. They map keys onto the highlight
+    # *actions* (the real API); with ``highlight=False`` the arrow / page / home /
     # end actions fall through to plain scrolling, and enter/space are disabled
     # (see ``check_action``) so they bubble to the app. Override or clear them
     # freely — keybinding policy stays the product's.
     BINDINGS: ClassVar[list[BindingType]] = [
-        Binding("up", "cursor_up", "Cursor up", show=False),
-        Binding("down", "cursor_down", "Cursor down", show=False),
-        Binding("pageup", "cursor_page_up", "Cursor page up", show=False),
-        Binding("pagedown", "cursor_page_down", "Cursor page down", show=False),
-        Binding("home", "cursor_home", "Cursor to first", show=False),
-        Binding("end", "cursor_end", "Cursor to last", show=False),
+        Binding("up", "highlight_up", "Highlight up", show=False),
+        Binding("down", "highlight_down", "Highlight down", show=False),
+        Binding("pageup", "highlight_page_up", "Highlight page up", show=False),
+        Binding("pagedown", "highlight_page_down", "Highlight page down", show=False),
+        Binding("home", "highlight_home", "Highlight to first", show=False),
+        Binding("end", "highlight_end", "Highlight to last", show=False),
         Binding("enter", "activate", "Activate", show=False),
         Binding("space", "activate", "Activate", show=False),
     ]
@@ -198,7 +198,7 @@ class FlowView(ScrollView, Generic[T]):
             return self.flow_view
 
     class Highlighted(Message):
-        """Posted when the keyboard cursor moves to an entry (``cursor=True``).
+        """Posted when the keyboard highlight moves to an entry (``highlight=True``).
         ``entry`` is the newly highlighted entry, or ``None`` when cleared.
         """
 
@@ -212,7 +212,7 @@ class FlowView(ScrollView, Generic[T]):
             return self.flow_view
 
     class Activated(Message):
-        """Posted when the cursor entry is activated (Enter / Space by default).
+        """Posted when the highlight entry is activated (Enter / Space by default).
         ``entry`` is the activated entry.
         """
 
@@ -235,7 +235,7 @@ class FlowView(ScrollView, Generic[T]):
         right_decorator: FlowDecorator[T] | None = None,
         right_gutter_width: int | None = None,
         selectable: bool = False,
-        cursor: bool = False,
+        highlight: bool = False,
         sticky_header: Callable[[Entry[T]], bool] | None = None,
         anchor: Anchor = Anchor.CURRENT,
         estimated_height: int = 1,
@@ -331,10 +331,10 @@ class FlowView(ScrollView, Generic[T]):
         # default: no click-to-select and no highlight until `selectable=True`.
         self._selectable = selectable
         self._selected: Entry[T] | None = None
-        # Keyboard cursor (opt-in). When off, the arrow/page/home/end bindings
+        # Keyboard highlight (opt-in). When off, the arrow/page/home/end bindings
         # fall through to scrolling and enter/space bubble (see check_action).
-        self._cursor_enabled = cursor
-        self._cursor: Entry[T] | None = None
+        self._highlight_enabled = highlight
+        self._highlighted: Entry[T] | None = None
         # Per-entry visibility observers: acquire/release a user resource as the
         # entry enters/leaves the viewport (the general lifecycle hook).
         self._observers: dict[int, list[_VisibilityObserver[T]]] = {}
@@ -449,8 +449,8 @@ class FlowView(ScrollView, Generic[T]):
     def on_flow_remove(self, entry: Entry[T], index: int) -> None:
         if self._selected is entry:
             self.select(None)
-        if self._cursor is entry:
-            self.cursor_to(None)
+        if self._highlighted is entry:
+            self.highlight_entry(None)
         self._stop_animation(entry.id)
         self._drop_observers(entry.id)
         self._visible_ids.discard(entry.id)
@@ -466,8 +466,8 @@ class FlowView(ScrollView, Generic[T]):
         # presentation, so hiding/showing is instant and never re-presents.
         if entry.hidden and self._selected is entry:
             self.select(None)
-        if entry.hidden and self._cursor is entry:
-            self.cursor_to(None)
+        if entry.hidden and self._highlighted is entry:
+            self.highlight_entry(None)
         state = self._capture()
         self._viewport.set_entries(self._visible_entries())
         self._refresh_layout(state)
@@ -476,8 +476,8 @@ class FlowView(ScrollView, Generic[T]):
     def on_flow_clear(self) -> None:
         if self._selected is not None:
             self.select(None)
-        if self._cursor is not None:
-            self.cursor_to(None)
+        if self._highlighted is not None:
+            self.highlight_entry(None)
         for entry_id in list(self._animations):
             self._stop_animation(entry_id)
         for entry_id in list(self._observers):
@@ -513,6 +513,22 @@ class FlowView(ScrollView, Generic[T]):
         self._sync_scroll()
         vr = self._viewport.visible_range()
         return vr.start, vr.stop
+
+    @property
+    def row_count(self) -> int:
+        """Total number of content rows (all entries plus spacer gaps) — the
+        virtual height. Row indices for :meth:`row_text` run ``0 .. row_count-1``
+        and match the ``y`` in a text :class:`~textual.selection.Selection`."""
+        return self._viewport.total_height
+
+    def row_text(self, y: int) -> str:
+        """The plain text of content row ``y`` (``""`` for an out-of-range row or
+        a spacer gap). The ``x`` of a selection ``Offset`` indexes into this
+        string, so it's the basis for a text/copy-mode cursor built on the
+        selection API."""
+        if self._content_width() <= 0:
+            return ""
+        return self._content_row_text(y, self._content_width())
 
     def scroll_to_top(
         self, *, animate: bool = False, duration: float | None = None
@@ -597,100 +613,100 @@ class FlowView(ScrollView, Generic[T]):
         """Clear the current selection (if any)."""
         self.select(None)
 
-    # -- keyboard cursor ---------------------------------------------------
+    # -- keyboard highlight ---------------------------------------------------
 
     @property
-    def cursor(self) -> Entry[T] | None:
-        """The entry under the keyboard cursor, or ``None`` (``cursor=True``)."""
-        return self._cursor
+    def highlighted(self) -> Entry[T] | None:
+        """The entry under the keyboard highlight, or ``None`` (``highlight=True``)."""
+        return self._highlighted
 
     def check_action(
         self, action: str, parameters: tuple[object, ...]
     ) -> bool | None:
-        # Disable enter/space when the cursor is off so they bubble to the app.
+        # Disable enter/space when the highlight is off so they bubble to the app.
         # The arrow/page/home/end actions stay enabled and fall through to
         # scrolling (below), preserving the default scroll behaviour.
-        if action == "activate" and not self._cursor_enabled:
+        if action == "activate" and not self._highlight_enabled:
             return False
         return True
 
-    def cursor_to(self, entry: Entry[T] | None) -> None:
-        """Move the keyboard cursor to ``entry`` (or clear it with ``None``),
+    def highlight_entry(self, entry: Entry[T] | None) -> None:
+        """Move the keyboard highlight to ``entry`` (or clear it with ``None``),
         scrolling it into view and posting :class:`Highlighted`. A no-op if the
-        entry is dead, hidden, or already the cursor."""
+        entry is dead, hidden, or already the highlight."""
         if entry is not None and (not entry.alive or entry.hidden):
             return
-        if self._cursor is entry:
+        if self._highlighted is entry:
             return
-        self._cursor = entry
+        self._highlighted = entry
         if entry is not None:
             self.ensure_visible(entry)
         self.refresh()
         self.post_message(self.Highlighted(self, entry))
 
-    def move_cursor(self, delta: int) -> None:
-        """Move the cursor by ``delta`` entries (clamped, hidden ones skipped —
-        the viewport's entry list is already hidden-free). With no cursor yet,
+    def move_highlight(self, delta: int) -> None:
+        """Move the highlight by ``delta`` entries (clamped, hidden ones skipped —
+        the viewport's entry list is already hidden-free). With no highlight yet,
         the first move lands on the first (``delta > 0``) or last entry."""
         entries = self._viewport.entries
         if not entries:
             return
-        if self._cursor is None:
-            self.cursor_to(entries[0] if delta > 0 else entries[-1])
+        if self._highlighted is None:
+            self.highlight_entry(entries[0] if delta > 0 else entries[-1])
             return
         try:
-            index = entries.index(self._cursor)
+            index = entries.index(self._highlighted)
         except ValueError:
-            self.cursor_to(entries[0] if delta > 0 else entries[-1])
+            self.highlight_entry(entries[0] if delta > 0 else entries[-1])
             return
-        self.cursor_to(entries[max(0, min(index + delta, len(entries) - 1))])
+        self.highlight_entry(entries[max(0, min(index + delta, len(entries) - 1))])
 
-    def cursor_first(self) -> None:
-        """Move the cursor to the first entry."""
+    def highlight_first(self) -> None:
+        """Move the highlight to the first entry."""
         entries = self._viewport.entries
         if entries:
-            self.cursor_to(entries[0])
+            self.highlight_entry(entries[0])
 
-    def cursor_last(self) -> None:
-        """Move the cursor to the last entry."""
+    def highlight_last(self) -> None:
+        """Move the highlight to the last entry."""
         entries = self._viewport.entries
         if entries:
-            self.cursor_to(entries[-1])
+            self.highlight_entry(entries[-1])
 
     def activate(self) -> None:
-        """Activate the cursor entry — posts :class:`Activated`. A no-op with no
-        cursor."""
-        if self._cursor is not None:
-            self.post_message(self.Activated(self, self._cursor))
+        """Activate the highlight entry — posts :class:`Activated`. A no-op with no
+        highlight."""
+        if self._highlighted is not None:
+            self.post_message(self.Activated(self, self._highlighted))
 
-    def _cursor_page(self) -> int:
-        """How many entries fit in the viewport, for page-wise cursor moves."""
+    def _highlight_page(self) -> int:
+        """How many entries fit in the viewport, for page-wise highlight moves."""
         vr = self._viewport.visible_range()
         return max(1, len(vr.entries) - 1)
 
-    def action_cursor_up(self) -> None:
-        self.move_cursor(-1) if self._cursor_enabled else self.action_scroll_up()
+    def action_highlight_up(self) -> None:
+        self.move_highlight(-1) if self._highlight_enabled else self.action_scroll_up()
 
-    def action_cursor_down(self) -> None:
-        self.move_cursor(1) if self._cursor_enabled else self.action_scroll_down()
+    def action_highlight_down(self) -> None:
+        self.move_highlight(1) if self._highlight_enabled else self.action_scroll_down()
 
-    def action_cursor_page_up(self) -> None:
-        if self._cursor_enabled:
-            self.move_cursor(-self._cursor_page())
+    def action_highlight_page_up(self) -> None:
+        if self._highlight_enabled:
+            self.move_highlight(-self._highlight_page())
         else:
             self.action_page_up()
 
-    def action_cursor_page_down(self) -> None:
-        if self._cursor_enabled:
-            self.move_cursor(self._cursor_page())
+    def action_highlight_page_down(self) -> None:
+        if self._highlight_enabled:
+            self.move_highlight(self._highlight_page())
         else:
             self.action_page_down()
 
-    def action_cursor_home(self) -> None:
-        self.cursor_first() if self._cursor_enabled else self.action_scroll_home()
+    def action_highlight_home(self) -> None:
+        self.highlight_first() if self._highlight_enabled else self.action_scroll_home()
 
-    def action_cursor_end(self) -> None:
-        self.cursor_last() if self._cursor_enabled else self.action_scroll_end()
+    def action_highlight_end(self) -> None:
+        self.highlight_last() if self._highlight_enabled else self.action_scroll_end()
 
     def action_activate(self) -> None:
         self.activate()
@@ -1195,8 +1211,8 @@ class FlowView(ScrollView, Generic[T]):
             line = self._overlay_component(line, "flowview--sticky-header")
         if self._selected is entry:
             line = self._overlay_component(line, "flowview--selected")
-        if self._cursor is entry:
-            line = self._overlay_component(line, "flowview--cursor")
+        if self._highlighted is entry:
+            line = self._overlay_component(line, "flowview--highlight")
         return line
 
     def _overlay_component(self, line: Strip, name: str) -> Strip:

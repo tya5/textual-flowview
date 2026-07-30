@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** the keyboard *cursor* (opt-in entry navigation from 0.6.0) is
+  renamed to **highlight**, freeing "cursor" for a per-character text cursor.
+  `cursor=` → `highlight=`; `move_cursor` → `move_highlight`; `cursor_to` →
+  `highlight_entry`; `cursor_first`/`cursor_last` → `highlight_first`/
+  `highlight_last`; the `cursor` property → `highlighted`; component class
+  `flowview--cursor` → `flowview--highlight`. Messages (`Highlighted`,
+  `Activated`) and `activate()` are unchanged. `examples/cursor.py` →
+  `examples/highlight.py`.
+
+### Added
+
+- `FlowView.row_count` and `row_text(y)` — the content-row count and per-row
+  text (the string a selection `Offset.x` indexes into), the primitives for
+  building a text/copy cursor on the selection API.
+
 ## [0.6.2] - 2026-07-30
 
 ### Fixed

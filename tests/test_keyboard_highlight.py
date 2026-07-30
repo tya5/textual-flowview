@@ -19,7 +19,7 @@ class RowPresenter:
         return Presentation(height=1, renderable=Text(item.text))
 
 
-class CursorApp(App):
+class HighlightApp(App):
     def __init__(self, model, **kw) -> None:
         super().__init__()
         self._model = model
@@ -48,10 +48,10 @@ def _model(n: int = 50) -> FlowModel[Row]:
 
 
 @pytest.mark.asyncio
-async def test_cursor_moves_by_item_and_follows() -> None:
+async def test_highlight_moves_by_item_and_follows() -> None:
     model = _model()
     entries = list(model)
-    app = CursorApp(model, cursor=True)
+    app = HighlightApp(model, highlight=True)
     async with app.run_test(size=(30, 10)) as pilot:
         await pilot.pause()
         await pilot.pause()
@@ -60,21 +60,21 @@ async def test_cursor_moves_by_item_and_follows() -> None:
         await pilot.pause()
         await pilot.press("down", "down", "down")
         await pilot.pause()
-        assert view.cursor is entries[2]
+        assert view.highlighted is entries[2]
         assert app.highlights[-1] is entries[2]
-        # many downs -> cursor moves one item each and the view auto-scrolls
+        # many downs -> highlight moves one item each and the view auto-scrolls
         for _ in range(20):
             await pilot.press("down")
         await pilot.pause()
-        assert view.cursor is entries[22]
-        assert int(view.scroll_offset.y) > 0  # followed the cursor off-screen
+        assert view.highlighted is entries[22]
+        assert int(view.scroll_offset.y) > 0  # followed the highlight off-screen
 
 
 @pytest.mark.asyncio
-async def test_cursor_home_end_and_clamp() -> None:
+async def test_highlight_home_end_and_clamp() -> None:
     model = _model(20)
     entries = list(model)
-    app = CursorApp(model, cursor=True)
+    app = HighlightApp(model, highlight=True)
     async with app.run_test(size=(30, 10)) as pilot:
         await pilot.pause()
         await pilot.pause()
@@ -83,23 +83,23 @@ async def test_cursor_home_end_and_clamp() -> None:
         await pilot.pause()
         await pilot.press("end")
         await pilot.pause()
-        assert view.cursor is entries[-1]
+        assert view.highlighted is entries[-1]
         await pilot.press("down")  # clamp at the end
         await pilot.pause()
-        assert view.cursor is entries[-1]
+        assert view.highlighted is entries[-1]
         await pilot.press("home")
         await pilot.pause()
-        assert view.cursor is entries[0]
+        assert view.highlighted is entries[0]
         await pilot.press("up")  # clamp at the start
         await pilot.pause()
-        assert view.cursor is entries[0]
+        assert view.highlighted is entries[0]
 
 
 @pytest.mark.asyncio
-async def test_enter_activates_cursor() -> None:
+async def test_enter_activates_highlight() -> None:
     model = _model(10)
     entries = list(model)
-    app = CursorApp(model, cursor=True)
+    app = HighlightApp(model, highlight=True)
     async with app.run_test(size=(30, 10)) as pilot:
         await pilot.pause()
         await pilot.pause()
@@ -117,20 +117,20 @@ async def test_enter_activates_cursor() -> None:
 
 
 @pytest.mark.asyncio
-async def test_cursor_disabled_by_default_arrows_scroll() -> None:
+async def test_highlight_disabled_by_default_arrows_scroll() -> None:
     model = _model()
-    app = CursorApp(model)  # cursor defaults to False
+    app = HighlightApp(model)  # highlight defaults to False
     async with app.run_test(size=(30, 10)) as pilot:
         await pilot.pause()
         await pilot.pause()
         view = app.query_one(FlowView)
         view.focus()
         await pilot.pause()
-        assert view.cursor is None
+        assert view.highlighted is None
         await pilot.press("down", "down", "down")
         await pilot.pause()
-        # arrows scrolled the viewport; no cursor was created
-        assert view.cursor is None
+        # arrows scrolled the viewport; no highlight was created
+        assert view.highlighted is None
         assert int(view.scroll_offset.y) > 0
         # enter is not consumed -> no activation
         await pilot.press("enter")
@@ -139,27 +139,27 @@ async def test_cursor_disabled_by_default_arrows_scroll() -> None:
 
 
 @pytest.mark.asyncio
-async def test_cursor_skips_hidden_and_clears_on_remove() -> None:
+async def test_highlight_skips_hidden_and_clears_on_remove() -> None:
     model = _model(10)
     entries = list(model)
-    app = CursorApp(model, cursor=True)
+    app = HighlightApp(model, highlight=True)
     async with app.run_test(size=(30, 10)) as pilot:
         await pilot.pause()
         await pilot.pause()
         view = app.query_one(FlowView)
-        view.cursor_to(entries[3])
+        view.highlight_entry(entries[3])
         await pilot.pause()
-        assert view.cursor is entries[3]
-        # hiding the cursor entry clears the cursor
+        assert view.highlighted is entries[3]
+        # hiding the highlight entry clears the highlight
         entries[3].hide()
         await pilot.pause()
-        assert view.cursor is None
-        # cursor_to a hidden entry is a no-op
-        view.cursor_to(entries[3])
-        assert view.cursor is None
-        # removing the cursor entry clears it
-        view.cursor_to(entries[5])
-        assert view.cursor is entries[5]
+        assert view.highlighted is None
+        # highlight_entry a hidden entry is a no-op
+        view.highlight_entry(entries[3])
+        assert view.highlighted is None
+        # removing the highlight entry clears it
+        view.highlight_entry(entries[5])
+        assert view.highlighted is entries[5]
         entries[5].remove()
         await pilot.pause()
-        assert view.cursor is None
+        assert view.highlighted is None
