@@ -671,11 +671,24 @@ entry.patch_rows(safe_row, tail_strips)
 FlowView keeps rows `[0:safe_row]` as-is (no re-render) and swaps the tail —
 O(tail) per chunk. You provide `tail_strips` (a list of `textual.strip.Strip`,
 rendered at the width `present` was called with) and `safe_row`, the first row
-that may still change — the *safe watermark* you compute for your content: up to
-the last newline for wrapped text, the last closed block for markdown, etc. (Only
-you know how far your renderable is stable — that judgement stays yours; keep the
-item in sync so a resize can still `present` the full body.) A presenter can also
-return pre-rendered rows directly with `Presentation(strips=[...])`.
+that may still change — the *safe watermark* you compute for your content.
+
+> ⚠️ **`safe_row` may only point at a row that will never change again.** FlowView
+> will not revisit `[0:safe_row]` — you've declared it final — so this is a scalpel,
+> not an unconditional incremental engine. It's always correct for **append-only**
+> output (plain text past the last hard `\n` doesn't reflow at a fixed width). It is
+> **not** correct to apply naively to **markdown**: a line's rendering isn't final
+> until its *block closes* — `*bold` becomes italic when the `*` arrives, a
+> ` ``` ` fence re-renders the whole block as code when it closes, a delimiter row
+> snaps the paragraphs above into a table, `===` retroactively makes the line above
+> an `<h1>`. For markdown, set `safe_row` to the first row of a **closed** block and
+> re-render the still-open block (everything below) on every patch — still O(open
+> block), not O(size). Renderables whose layout depends on *total* content (tables,
+> `Columns`, right-justify, content-sized panels) can't be patched mid-stream at
+> all; patch at completion or use `set_item`. Keep the item in sync (a resize
+> re-`present`s the full body and invalidates the pre-rendered widths).
+
+A presenter can also return pre-rendered rows directly with `Presentation(strips=[...])`.
 
 ### Design: interactive widgets live *outside* the flow
 

@@ -186,11 +186,33 @@ class Entry(Generic[T]):
 
         The cheap streaming path: rows ``[0:start]`` are kept as-is (**not**
         re-rendered), only the tail is swapped. ``start`` is the *safe
-        watermark* you computed — the first row that may still change (e.g. up
-        to the last newline for wrapped text, or the last closed block for
-        markdown). You own that judgement and the tail rendering; FlowView just
-        splices. Keep the item itself in sync so a later re-``present`` (e.g. on
-        resize) still produces the full body. A no-op on a removed entry."""
+        watermark* you computed — the first row that may still change. You own
+        that judgement and the tail rendering; FlowView just splices.
+
+        **The contract:** ``start`` may only point at a row you know will
+        **never change again**. FlowView will not revisit ``[0:start]`` — you
+        have declared it final. This is a scalpel, not an auto-incremental
+        engine: FlowView can't see inside an opaque renderable, so the stability
+        judgement is yours by design.
+
+        This is unconditionally correct for **append-only** output (plain text
+        past the last newline: rows above a hard ``\\n`` don't reflow at a fixed
+        width). It is **not** correct for **context-sensitive** renderables. In
+        markdown a line's rendering is not final until its *block closes* — an
+        open ``*`` becomes italic once closed, a `````` ``` ```` fence
+        re-renders the whole block as code when it closes, a delimiter row snaps
+        the paragraphs above into a table, ``===`` retroactively makes the line
+        above an ``<h1>``. So for markdown, ``start`` must be the first row of a
+        **closed** block, and the still-open block (everything from ``start``
+        down) must be **fully re-rendered on every patch**, not frozen — still
+        O(open block), not O(size). Renderables whose layout depends on *total*
+        content (tables, ``Columns``, right-justify, content-sized panels)
+        cannot be patched mid-stream at all; patch only at completion or use
+        :meth:`set_item`.
+
+        Keep the item itself in sync so a later re-``present`` (e.g. on resize,
+        which invalidates the pre-rendered widths) still produces the full body,
+        and drop your watermark on resize. A no-op on a removed entry."""
         if not self._alive:
             return
         self._revision += 1
