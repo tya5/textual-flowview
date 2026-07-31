@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Text selection is confined to the **body** columns — the gutter is decoration,
+  not selectable text (like a scrollbar). Selection offsets are now stamped
+  body-relative and the gutter cells carry none, so neither a mouse drag nor copy
+  mode can address them and a yank never carries gutter glyphs. `row_text(y)` and
+  copy mode are body-only accordingly; CJK alignment and gutter-less rows are
+  unchanged (#9).
+
 ## [0.8.0] - 2026-07-30
 
 ### Added

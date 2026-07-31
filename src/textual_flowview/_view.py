@@ -597,7 +597,7 @@ class FlowView(ScrollView, Generic[T]):
         selection API."""
         if self._content_width() <= 0:
             return ""
-        return self._content_row_text(y, self._content_width())
+        return self._content_row_text(y)
 
     def entry_at_row(self, y: int) -> Entry[T] | None:
         """The entry that owns content row ``y`` (``None`` for a spacer gap or an
@@ -1636,23 +1636,28 @@ class FlowView(ScrollView, Generic[T]):
         """Apply the text-selection highlight for this content row and stamp
         each cell with its content offset so Textual's native mouse selection
         (and Ctrl+C copy) can map clicks back to text."""
+        width = line.cell_length
+        # The selection lives in the **body** columns only — the gutter is
+        # decoration, not selectable text (like a scrollbar). Offsets are stamped
+        # body-relative and the gutter cells carry none, so neither a mouse drag
+        # nor copy mode can address them, and a yank never carries gutter glyphs.
+        body_start = min(self._left_gutter_w(), width)
+        body_end = max(body_start, width - self._right_gutter_w())
         selection = self.text_selection
         if selection is not None:
             span = selection.get_span(virtual_y)
             if span is not None:
-                width = line.cell_length
-                text = line.text
-                n = len(text)
+                body_text = line.crop(body_start, body_end).text
+                n = len(body_text)
                 start, end = span
-                # The span is in *character* offsets (end == -1 means "to end of
-                # line"); Strip.crop works in *cells*. Convert, or a row with
-                # double-width glyphs (CJK, emoji) highlights the wrong columns
-                # and clips characters mid-cell.
+                # span is in *character* offsets into the body (end == -1 means
+                # "to end of line"); Strip.crop works in *cells* — convert, or CJK
+                # / emoji rows highlight the wrong columns and clip mid-cell.
                 end = n if end == -1 else end
                 start = max(0, min(start, n))
                 end = max(start, min(end, n))
-                start_cell = cell_len(text[:start])
-                end_cell = cell_len(text[:end])
+                start_cell = body_start + cell_len(body_text[:start])
+                end_cell = body_start + cell_len(body_text[:end])
                 if end_cell > start_cell:
                     line = Strip.join(
                         [
@@ -1663,7 +1668,11 @@ class FlowView(ScrollView, Generic[T]):
                             line.crop(end_cell, width),
                         ]
                     )
-        return line.apply_offsets(0, virtual_y)
+        # Stamp content offsets on the body columns only.
+        body = line.crop(body_start, body_end).apply_offsets(0, virtual_y)
+        return Strip.join(
+            [line.crop(0, body_start), body, line.crop(body_end, width)]
+        )
 
     def get_selection(self, selection: Selection) -> tuple[str, str] | None:
         """Extract the text under ``selection`` (Textual's selection protocol).
@@ -1690,7 +1699,7 @@ class FlowView(ScrollView, Generic[T]):
             span = selection.get_span(virtual_y)
             if span is None:
                 continue
-            row = self._content_row_text(virtual_y, width)
+            row = self._content_row_text(virtual_y)
             x0, x1 = span
             if x1 == -1 or x1 > len(row):
                 x1 = len(row)
@@ -1698,14 +1707,18 @@ class FlowView(ScrollView, Generic[T]):
             parts.append(row[x0:x1])
         return "\n".join(parts), "\n"
 
-    def _content_row_text(self, virtual_y: int, width: int) -> str:
+    def _content_row_text(self, virtual_y: int) -> str:
+        # The **body** text of the row — the gutter is decoration, not selectable
+        # text (selection offsets are body-relative; see _decorate_line), so a
+        # yank never carries gutter glyphs. rstrip the compositor's fill padding.
         located = self._viewport.locate(virtual_y)
         if located is None:
             return ""
         index, local_y = located
-        # rstrip the padding the compositor adds to fill the width, so a
-        # "to end of line" selection doesn't copy trailing spaces.
-        return self._compose_line(self._viewport.entries[index], local_y, width).text.rstrip()
+        strips = self._entry_strips(self._viewport.entries[index], self._body_width())
+        if 0 <= local_y < len(strips):
+            return strips[local_y].text.rstrip()
+        return ""
 
     def _compose_line(
         self, entry: Entry[T], local_y: int, content_width: int, *, sticky: bool = False

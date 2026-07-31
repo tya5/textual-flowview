@@ -370,3 +370,39 @@ async def test_copy_mode_changed_message() -> None:
         await pilot.press("escape")                  # library-side exit
         await pilot.pause()
         assert events == [True, False]
+
+
+@pytest.mark.asyncio
+async def test_copy_mode_excludes_gutter_from_selection() -> None:
+    # #9: the gutter is decoration; copy mode addresses the *body* only, so a
+    # yank never carries gutter glyphs, and row_text is body-only.
+    class Gutter:
+        def decorate(self, entry: object, width: int, height: int) -> Text:
+            return Text(("**")[:width])
+
+    sink: list[str] = []
+    model: FlowModel[Row] = FlowModel()
+    model.append(Row("newest reply body"))
+    model.append(Row("second body line"))
+
+    class GutterApp(App):
+        def compose(self) -> ComposeResult:
+            self.flow = FlowView(
+                model=model, presenter=RowPresenter(), spacing=0, estimated_height=1,
+                decorator=Gutter(), gutter_width=2,
+                clipboard=lambda s: sink.append(s) or True,
+            )
+            yield self.flow
+
+    app = GutterApp()
+    async with app.run_test(size=(40, 6)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        v.focus()
+        assert v.row_text(0) == "newest reply body"   # body only, no '**'
+        v.enter_copy_mode()
+        await pilot.pause()
+        assert v.row_text(0)[v._tc_col] == "n"         # starts at the body
+        await pilot.press("v", "j", "l", "l", "l")     # multi-row selection
+        assert v.copy_yank() == "newest reply body\nseco"  # no gutter on any row
