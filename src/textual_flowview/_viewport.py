@@ -76,6 +76,13 @@ class Viewport(Generic[T]):
         # Lazily rebuilt prefix-offset cache. _offsets[i] = rows above entry i;
         # _offsets[len] = total virtual height.
         self._offsets: list[int] | None = None
+        # Incremental rebuild: offsets[0.._dirty_from] stay valid; only
+        # [_dirty_from:] is recomputed. A single entry's height change dirties
+        # from its own index (entries above are unaffected), so streaming the
+        # last entry costs O(1) instead of O(N). Structural / width changes
+        # dirty from 0. `_index_of` maps id -> position for O(1) targeting.
+        self._dirty_from = 0
+        self._index_of: dict[int, int] = {}
 
     # -- configuration -----------------------------------------------------
 
@@ -113,12 +120,21 @@ class Viewport(Generic[T]):
     def set_entries(self, entries: list[Entry[T]]) -> None:
         """Replace the ordered entry list (e.g. after a structural change)."""
         self._entries = entries
+        self._index_of = {entry.id: i for i, entry in enumerate(entries)}
         self._invalidate_offsets()
 
     def invalidate_heights(self) -> None:
-        """Mark offsets stale because one or more heights changed (a present
-        completed, or an item was updated)."""
+        """Mark **all** offsets stale (a resize, or several heights changed)."""
         self._invalidate_offsets()
+
+    def invalidate_height_of(self, entry: Entry[T]) -> None:
+        """Mark offsets stale from ``entry`` onward only — its height changed but
+        entries above it did not move. O(1) for the last entry (streaming)."""
+        index = self._index_of.get(entry.id)
+        if index is None or self._offsets is None:
+            self._invalidate_offsets()  # unknown / already fully dirty
+        else:
+            self._dirty_from = min(self._dirty_from, index)
 
     # -- geometry ----------------------------------------------------------
 
@@ -148,22 +164,35 @@ class Viewport(Generic[T]):
     def _prefix(self) -> list[int]:
         """Cumulative offsets: ``prefix[i]`` = the start row of entry ``i``,
         ``prefix[len]`` = total height. ``spacing`` blank rows sit between
-        consecutive entries (not before the first or after the last)."""
-        if self._offsets is None:
-            offsets = []
-            acc = 0
-            last = len(self._entries) - 1
-            for i, entry in enumerate(self._entries):
-                offsets.append(acc)
-                acc += self._height_of(entry)
-                if i < last:
-                    acc += self._spacing
-            offsets.append(acc)
-            self._offsets = offsets
-        return self._offsets
+        consecutive entries (not before the first or after the last).
+
+        Rebuilt incrementally from ``_dirty_from``: ``offsets[0.._dirty_from]``
+        are still valid (entries above the change didn't move), so only the tail
+        is recomputed."""
+        n = len(self._entries)
+        offsets = self._offsets
+        if offsets is None or len(offsets) != n + 1:
+            offsets = [0] * (n + 1)
+            start = 0
+        elif self._dirty_from > n:
+            return offsets  # clean
+        else:
+            start = self._dirty_from
+        acc = offsets[start]  # start row of entry `start` (valid; 0 when start==0)
+        last = n - 1
+        for i in range(start, n):
+            offsets[i] = acc
+            acc += self._height_of(self._entries[i])
+            if i < last:
+                acc += self._spacing
+        offsets[n] = acc
+        self._offsets = offsets
+        self._dirty_from = n + 1  # clean
+        return offsets
 
     def _invalidate_offsets(self) -> None:
         self._offsets = None
+        self._dirty_from = 0
 
     @property
     def entries(self) -> list[Entry[T]]:
@@ -321,8 +350,9 @@ class Viewport(Generic[T]):
         return AnchorState(stick_bottom, top_entry, delta)
 
     def restore_anchor(self, state: AnchorState[T]) -> None:
-        """Reposition after a reflow according to a captured anchor."""
-        self._invalidate_offsets()
+        """Reposition after a reflow according to a captured anchor. The caller
+        (``_refresh_layout``) has already invalidated with the right scope, so
+        this does not re-invalidate (which would force a full rebuild)."""
         if state.stick_bottom:
             self.scroll_to_bottom()
             return

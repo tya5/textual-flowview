@@ -506,7 +506,7 @@ class FlowView(ScrollView, Generic[T]):
             # keeps its last-known height until then, so nothing on screen shifts.
             return
         state = self._capture()
-        self._refresh_layout(state)
+        self._refresh_layout(state, dirty_entry=entry)
         self._present_entry(entry)
         self._reanchor_copy_cursor()
 
@@ -530,7 +530,7 @@ class FlowView(ScrollView, Generic[T]):
         if entry.id not in self._band_ids:
             return  # off-screen: cached; reflows lazily when scrolled in
         state = self._capture()
-        self._refresh_layout(state)
+        self._refresh_layout(state, dirty_entry=entry)
         self._reanchor_copy_cursor()
 
     def on_flow_remove(self, entry: Entry[T], index: int) -> None:
@@ -1971,7 +1971,7 @@ class FlowView(ScrollView, Generic[T]):
                 self._layout.store(entry.id, width, revision, presentation)
                 self._strip_cache.pop(entry.id, None)
                 state = self._capture()
-                self._refresh_layout(state)
+                self._refresh_layout(state, dirty_entry=entry)
                 if errored:
                     # Spec: a rendering error also flips the entry to ERROR so
                     # the gutter reflects it. Does not re-present the body.
@@ -2058,8 +2058,16 @@ class FlowView(ScrollView, Generic[T]):
         self._sync_scroll()
         return self._viewport.capture_anchor()
 
-    def _refresh_layout(self, anchor_state: AnchorState[T] | None) -> None:
-        self._viewport.invalidate_heights()
+    def _refresh_layout(
+        self, anchor_state: AnchorState[T] | None, *, dirty_entry: Entry[T] | None = None
+    ) -> None:
+        # A single entry's height change (streaming) only dirties offsets from
+        # its index down — O(1) for the last entry. Anything else (structural,
+        # resize) dirties everything.
+        if dirty_entry is not None:
+            self._viewport.invalidate_height_of(dirty_entry)
+        else:
+            self._viewport.invalidate_heights()
         self._sticky_cache = None
         self.virtual_size = Size(self._content_width(), self._viewport.total_height)
         target: int | None = None

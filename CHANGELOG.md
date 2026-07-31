@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-07-31
+
+### Changed
+
+- Streaming a single entry now reflows in **O(1)** instead of O(N). A height
+  change from `update`/`patch_rows`/present only dirties the prefix-sum offsets
+  from that entry's index onward (`Viewport.invalidate_height_of`) rather than
+  rebuilding all N; the last entry — the streaming hot path — is constant-time.
+  Measured flat ~0.04 ms/reflow from N=100 to N=20000 (was ~1.8 ms at N=5000).
+  Structural changes (insert/remove/resize) still do a full rebuild. Pairs with
+  `patch_rows`: `patch_rows` removes the O(size) render term, this removes the
+  O(N) reflow term, so a long backlog no longer taxes each streamed chunk (#10).
+
 ### Added
 
 - Incremental streaming: `Entry.patch_rows(start, strips)` replaces an entry's
