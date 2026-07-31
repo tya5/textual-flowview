@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Any, Generic, TypeVar
 from ._state import EntryState
 
 if TYPE_CHECKING:
+    from textual.strip import Strip
+
     from ._model import FlowModel
 
 __all__ = ["Entry"]
@@ -176,6 +178,23 @@ class Entry(Generic[T]):
         self._item = item
         self._revision += 1
         self._model._on_entry_updated(self)
+
+    def patch_rows(self, start: int, strips: list[Strip]) -> None:
+        """Incrementally replace this entry's body rows from ``start`` onward
+        with ``strips`` — already rendered, one :class:`~textual.strip.Strip`
+        per line, at the width ``present`` was last called with.
+
+        The cheap streaming path: rows ``[0:start]`` are kept as-is (**not**
+        re-rendered), only the tail is swapped. ``start`` is the *safe
+        watermark* you computed — the first row that may still change (e.g. up
+        to the last newline for wrapped text, or the last closed block for
+        markdown). You own that judgement and the tail rendering; FlowView just
+        splices. Keep the item itself in sync so a later re-``present`` (e.g. on
+        resize) still produces the full body. A no-op on a removed entry."""
+        if not self._alive:
+            return
+        self._revision += 1
+        self._model._on_entry_patch(self, start, list(strips))
 
     def remove(self) -> None:
         """Remove this item from the model. A no-op if already removed."""

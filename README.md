@@ -658,6 +658,25 @@ via `dataclasses.replace`). Either re-presents just that entry. See
 `examples/intervention.py` for a clickable selector that resolves via
 `set_item`.
 
+### Incremental streaming (`patch_rows`)
+
+`update` / `set_item` re-present the **whole** body, so streaming a growing entry
+chunk-by-chunk costs O(size × chunks) — the classic LLM-reply freeze. For that,
+render the changed tail yourself and splice it in:
+
+```python
+entry.patch_rows(safe_row, tail_strips)
+```
+
+FlowView keeps rows `[0:safe_row]` as-is (no re-render) and swaps the tail —
+O(tail) per chunk. You provide `tail_strips` (a list of `textual.strip.Strip`,
+rendered at the width `present` was called with) and `safe_row`, the first row
+that may still change — the *safe watermark* you compute for your content: up to
+the last newline for wrapped text, the last closed block for markdown, etc. (Only
+you know how far your renderable is stable — that judgement stays yours; keep the
+item in sync so a resize can still `present` the full body.) A presenter can also
+return pre-rendered rows directly with `Presentation(strips=[...])`.
+
 ### Design: interactive widgets live *outside* the flow
 
 FlowView **paints renderables; it does not mount a Textual widget per entry** —

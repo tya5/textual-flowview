@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
-from typing import Generic, Protocol, TypeVar
+from typing import Any, Generic, Protocol, TypeVar
 
 from ._entry import Entry
 
@@ -20,6 +20,7 @@ class ModelListener(Protocol[T]):
     def on_flow_insert(self, entry: Entry[T], index: int) -> None: ...
     def on_flow_insert_many(self, entries: list[Entry[T]], index: int) -> None: ...
     def on_flow_update(self, entry: Entry[T]) -> None: ...
+    def on_flow_patch(self, entry: Entry[T], start: int, strips: list[Any]) -> None: ...
     def on_flow_remove(self, entry: Entry[T], index: int) -> None: ...
     def on_flow_clear(self) -> None: ...
     def on_flow_decorate(self, entry: Entry[T]) -> None: ...
@@ -103,6 +104,10 @@ class FlowModel(Generic[T]):
     def _on_entry_updated(self, entry: Entry[T]) -> None:
         if self._listener is not None:
             self._listener.on_flow_update(entry)
+
+    def _on_entry_patch(self, entry: Entry[T], start: int, strips: list[Any]) -> None:
+        if self._listener is not None:
+            self._listener.on_flow_patch(entry, start, strips)
 
     def _on_entry_decorated(self, entry: Entry[T]) -> None:
         if self._listener is not None:

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Incremental streaming: `Entry.patch_rows(start, strips)` replaces an entry's
+  body rows from `start` onward with pre-rendered `Strip`s, keeping the frozen
+  prefix as-is — O(tail) per chunk instead of the O(size) full re-present that
+  `set_item`/`update` cost. The consumer computes the safe watermark and renders
+  the hot tail (only it knows how far its renderable is stable); FlowView just
+  splices, stays type-agnostic, and falls back to a full `present` on resize.
+  `Presentation` gains a `strips=` field so a presenter can hand FlowView
+  pre-rendered rows directly (#10).
+
 ### Fixed
 
 - Text selection is confined to the **body** columns — the gutter is decoration,

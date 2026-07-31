@@ -510,6 +510,29 @@ class FlowView(ScrollView, Generic[T]):
         self._present_entry(entry)
         self._reanchor_copy_cursor()
 
+    def on_flow_patch(self, entry: Entry[T], start: int, strips: list[Strip]) -> None:
+        # Incremental body update: keep the frozen prefix strips, splice the
+        # pre-rendered tail. No present()/render_lines — this is the O(tail) path.
+        width = self._body_width()
+        cached = self._strip_cache.get(entry.id)
+        if cached is None or cached[1] != width:
+            # Not warm at this width (off-screen / just resized): fall back to a
+            # full re-present, which rebuilds the whole body from the item.
+            self.on_flow_update(entry)
+            return
+        prev = cached[2]
+        start = max(0, min(start, len(prev)))
+        tail = [s.adjust_cell_length(width) for s in strips]
+        new_strips = prev[:start] + tail
+        pres = Presentation(height=len(new_strips), strips=new_strips)
+        self._layout.store(entry.id, width, entry.revision, pres)
+        self._strip_cache[entry.id] = (entry.revision, width, new_strips)
+        if entry.id not in self._band_ids:
+            return  # off-screen: cached; reflows lazily when scrolled in
+        state = self._capture()
+        self._refresh_layout(state)
+        self._reanchor_copy_cursor()
+
     def on_flow_remove(self, entry: Entry[T], index: int) -> None:
         if self._selected is entry:
             self.select(None)
@@ -1834,7 +1857,14 @@ class FlowView(ScrollView, Generic[T]):
         cached = self._strip_cache.get(entry.id)
         if cached is not None and cached[0] == entry.revision and cached[1] == width:
             return cached[2]
-        strips = self._render_to_strips(presentation.renderable, width, presentation.height)
+        if presentation.strips is not None:
+            # Pre-rendered by the presenter (incremental streaming) — draw as-is,
+            # just size each row to the body width.
+            strips = [s.adjust_cell_length(width) for s in presentation.strips]
+        else:
+            strips = self._render_to_strips(
+                presentation.renderable, width, presentation.height
+            )
         self._strip_cache[entry.id] = (entry.revision, width, strips)
         return strips
 
