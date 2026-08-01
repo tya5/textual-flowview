@@ -533,6 +533,15 @@ acknowledgement. For a reliable path, pass `clipboard=` (a
 `pbcopy` / `xclip` / `wl-copy` — a per-view seam, so you don't override app-wide
 copy, and the sink's result is observable.
 
+> **Windows / git bash mojibake.** OSC 52 sends the text as base64 of **UTF-8**
+> bytes; git bash's mintty then decodes it under *its* configured character set.
+> If that isn't UTF-8, non-ASCII garbles on paste (ASCII survives) — a terminal
+> charset mismatch, not a copy bug. Quick fix: set mintty to UTF-8 (Options →
+> Text → Character set) and `export LANG=…UTF-8`. Robust fix (charset-independent):
+> bypass OSC 52 with a native Unicode sink via `clipboard=`, e.g.
+> `clipboard=lambda t: (pyperclip.copy(t), True)[1]` (pyperclip writes
+> `CF_UNICODETEXT` directly, so no code-page in the loop).
+
 **Mode changes.** `FlowView.CopyModeChanged` is posted on both entering and
 leaving copy mode (`event.copy_mode` is the new state) — handle it to keep your
 status line / conflicting keys in sync, especially the `Esc` exit that happens
