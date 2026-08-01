@@ -515,15 +515,26 @@ Every motion is a **public method** (and an action the default keys map onto):
 `copy_cursor_move`, `copy_cursor_line_start` / `line_end` / `first_nonblank`,
 `copy_cursor_word_forward` / `word_back` / `word_end`, `copy_cursor_top` /
 `bottom`, `copy_visual()` / `copy_visual_line()`, `copy_yank()`,
-`copy_scroll_center` / `top` / `bottom`, and `enter_copy_mode()` /
-`exit_copy_mode()` / `copy_mode`.
+`copy_scroll_center` / `top` / `bottom`, `copy_scroll_line_down` / `line_up`,
+`copy_scroll_half_page_down` / `half_page_up` / `page_down` / `page_up`, and
+`enter_copy_mode()` / `exit_copy_mode()` / `toggle_copy_mode()` / `copy_mode`.
 
 The default keys are vim-like and **live only while in copy mode** (they bubble
 to your app otherwise): `h`/`j`/`k`/`l`, `w`/`b`/`e`, `0`/`$`/`^`, `gg`/`G`,
 `[`/`]` (current entry top/bottom), `v`, `V`, `y`, `*` / `n` / `N` (search the
-selection, then next/prev), `zz`/`zt`/`zb`, `Ctrl-E`/`Ctrl-Y`, `Esc`. They're
-normal focus-scoped `BINDINGS` — subclass FlowView and override them to rebind;
-the keybinding policy stays yours. See `examples/copy_mode.py`.
+selection, then next/prev), `zz`/`zt`/`zb`, `Ctrl-E`/`Ctrl-Y` (line),
+`Ctrl-D`/`Ctrl-U` (half page), `Ctrl-F`/`Ctrl-B` (page), `Esc`. They're normal
+focus-scoped `BINDINGS` — subclass FlowView and override them to rebind; the
+keybinding policy stays yours. See `examples/copy_mode.py`.
+
+**Toggle, or always on.** Copy mode is entirely opt-in — nothing enters it by
+default. Bind a key to `toggle_copy_mode()` for a switch, or pass
+`FlowView(copy_mode=True)` to start in it on mount for a **copy-cursor-first**
+widget with no toggle (motions and yank are live from the start). Pick the
+interaction model: `highlight=True` for entry navigation, `copy_mode=True` for
+an always-on text cursor, or neither and drive `enter_copy_mode()` yourself.
+(`copy_mode=True` only sets the initial state; `Esc` still exits unless you
+rebind it — override the `escape` binding to lock the mode on.)
 
 **Clipboard.** Yank goes through `write_clipboard()`, which by default uses
 Textual's `App.copy_to_clipboard` — the terminal's **OSC 52** escape. That does

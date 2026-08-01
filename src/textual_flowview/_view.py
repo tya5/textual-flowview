@@ -152,6 +152,10 @@ class FlowView(ScrollView, Generic[T]):
         Binding("N", "copy_search_previous", "Search prev", show=False),
         Binding("ctrl+e", "copy_scroll_line_down", "Scroll line down", show=False),
         Binding("ctrl+y", "copy_scroll_line_up", "Scroll line up", show=False),
+        Binding("ctrl+d", "copy_scroll_half_page_down", "Half page down", show=False),
+        Binding("ctrl+u", "copy_scroll_half_page_up", "Half page up", show=False),
+        Binding("ctrl+f", "copy_scroll_page_down", "Page down", show=False),
+        Binding("ctrl+b", "copy_scroll_page_up", "Page up", show=False),
         Binding("escape", "copy_exit", "Exit copy mode", show=False),
     ]
 
@@ -276,6 +280,7 @@ class FlowView(ScrollView, Generic[T]):
         right_gutter_width: int | None = None,
         selectable: bool = False,
         highlight: bool = False,
+        copy_mode: bool = False,
         copy_scrolloff: int = 0,
         clipboard: Callable[[str], bool | None] | None = None,
         sticky_header: Callable[[Entry[T]], bool] | None = None,
@@ -380,7 +385,10 @@ class FlowView(ScrollView, Generic[T]):
         # Text/copy cursor mode (vim-like): a character cursor over the rendered
         # content, drawn via the widget's own text selection. Entered at runtime
         # (enter_copy_mode); the motion keys are default bindings gated on it.
+        # `copy_mode=True` starts in it on mount, for a copy-cursor-first widget
+        # with no toggle — the consumer picks the interaction model.
         self._copy_mode = False
+        self._start_in_copy_mode = copy_mode
         self._tc_row = 0
         self._tc_col = 0
         self._tc_anchor: tuple[int, int] | None = None  # visual-mode start (row, col)
@@ -418,6 +426,8 @@ class FlowView(ScrollView, Generic[T]):
         self._viewport.set_entries(self._visible_entries())
         self._refresh_layout(None)
         self._present_visible()
+        if self._start_in_copy_mode:
+            self.enter_copy_mode()
         if self._animation_fps > 0:
             # FlowView owns the animation clock (not the app): re-derive gutters
             # at this frame rate so a time-based decorator animates on its own.
@@ -1162,6 +1172,35 @@ class FlowView(ScrollView, Generic[T]):
         self.scroll_to(y=int(self.scroll_offset.y) - 1, animate=False)
         self._follow_view_with_cursor()
 
+    def copy_scroll_half_page_down(self) -> None:
+        """Scroll down half a screen, carrying the cursor with it (vim
+        ``Ctrl-D``)."""
+        self._scroll_page(self.content_size.height // 2)
+
+    def copy_scroll_half_page_up(self) -> None:
+        """Scroll up half a screen, carrying the cursor with it (vim
+        ``Ctrl-U``)."""
+        self._scroll_page(-(self.content_size.height // 2))
+
+    def copy_scroll_page_down(self) -> None:
+        """Scroll down a full screen, carrying the cursor with it (vim
+        ``Ctrl-F``); two rows of overlap are kept for context."""
+        self._scroll_page(max(1, self.content_size.height - 2))
+
+    def copy_scroll_page_up(self) -> None:
+        """Scroll up a full screen, carrying the cursor with it (vim
+        ``Ctrl-B``); two rows of overlap are kept for context."""
+        self._scroll_page(-max(1, self.content_size.height - 2))
+
+    def _scroll_page(self, delta: int) -> None:
+        # Move view and cursor by the same delta so the cursor keeps its screen
+        # row (vim Ctrl-D/U/F/B). At a buffer end the view clamps but the cursor
+        # keeps going — it just drifts toward that edge, as vim does. Both the
+        # cursor clamp and a keep-visible reveal happen in _render_copy_cursor.
+        self.scroll_to(y=int(self.scroll_offset.y) + delta, animate=False)
+        self._tc_row += delta
+        self._render_copy_cursor()
+
     def _follow_view_with_cursor(self) -> None:
         top = int(self.scroll_offset.y)
         height = self.content_size.height
@@ -1233,6 +1272,18 @@ class FlowView(ScrollView, Generic[T]):
 
     def action_copy_scroll_line_up(self) -> None:
         self.copy_scroll_line_up()
+
+    def action_copy_scroll_half_page_down(self) -> None:
+        self.copy_scroll_half_page_down()
+
+    def action_copy_scroll_half_page_up(self) -> None:
+        self.copy_scroll_half_page_up()
+
+    def action_copy_scroll_page_down(self) -> None:
+        self.copy_scroll_page_down()
+
+    def action_copy_scroll_page_up(self) -> None:
+        self.copy_scroll_page_up()
 
     def action_copy_exit(self) -> None:
         self.exit_copy_mode()

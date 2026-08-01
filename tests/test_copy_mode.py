@@ -166,6 +166,72 @@ async def test_copy_scroll_line_keeps_cursor_row() -> None:
         assert v._tc_row == row
 
 
+class AlwaysCopyApp(App):
+    def __init__(self, lines: list[str]) -> None:
+        super().__init__()
+        self.model: FlowModel[Row] = FlowModel()
+        for line in lines:
+            self.model.append(Row(line))
+
+    def compose(self) -> ComposeResult:
+        self.flow = FlowView(
+            model=self.model, presenter=RowPresenter(), spacing=0,
+            estimated_height=1, copy_mode=True,  # copy-cursor-first, no toggle
+        )
+        yield self.flow
+
+
+@pytest.mark.asyncio
+async def test_copy_mode_flag_starts_active_without_a_toggle() -> None:
+    app = AlwaysCopyApp([f"row {i}" for i in range(20)])
+    async with app.run_test(size=(30, 10)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        v.focus()
+        assert v.copy_mode is True  # active on mount, never toggled
+        assert (v._tc_row, v._tc_col) == (0, 0)
+        await pilot.press("j")  # motion keys live immediately
+        await pilot.press("j")
+        await pilot.pause()
+        assert v._tc_row == 2
+
+
+@pytest.mark.asyncio
+async def test_copy_scroll_half_and_full_page_carry_cursor() -> None:
+    app = CopyApp([f"row {i}" for i in range(60)])
+    async with app.run_test(size=(30, 10)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        v.focus()
+        v.enter_copy_mode()  # scrolloff 0, cursor at top row 0
+        await pilot.pause()
+        h = v.content_size.height
+        screen_pos = v._tc_row - int(v.scroll_offset.y)
+
+        await pilot.press("ctrl+d")  # half page down: view + cursor move together
+        await pilot.pause()
+        assert int(v.scroll_offset.y) == h // 2
+        assert v._tc_row == h // 2
+        assert v._tc_row - int(v.scroll_offset.y) == screen_pos  # same screen row
+
+        await pilot.press("ctrl+f")  # full page down (height - 2 overlap)
+        await pilot.pause()
+        assert int(v.scroll_offset.y) == h // 2 + (h - 2)
+        assert v._tc_row - int(v.scroll_offset.y) == screen_pos
+
+        await pilot.press("ctrl+u")  # half page back up
+        await pilot.pause()
+        assert int(v.scroll_offset.y) == (h - 2)
+        assert v._tc_row - int(v.scroll_offset.y) == screen_pos
+
+        await pilot.press("ctrl+b")  # full page back up -> clamps at top
+        await pilot.pause()
+        assert int(v.scroll_offset.y) == 0
+        assert v._tc_row == 0
+
+
 class HighlightCopyApp(CopyApp):
     def compose(self) -> ComposeResult:
         self.flow = FlowView(

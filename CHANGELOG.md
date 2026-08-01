@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-02
+
+### Added
+
+- Copy mode gains vim-style **half-page and full-page scrolling**: `Ctrl-D` /
+  `Ctrl-U` (half) and `Ctrl-F` / `Ctrl-B` (full, two rows of overlap), carrying
+  the cursor with the view so it keeps its screen row. Public methods
+  `copy_scroll_half_page_down` / `half_page_up` / `page_down` / `page_up`. This
+  is the vim-idiomatic "scroll faster" — bigger-unit motions rather than a
+  configurable `Ctrl-E` step (count prefixes only affect the first press, and
+  hold-to-repeat speed is a terminal setting, not the app's).
+- `FlowView(copy_mode=True)` starts in copy mode on mount — a
+  **copy-cursor-first** widget with no toggle; motions and yank are live from
+  the start. Copy mode was already fully opt-in (nothing enters it by default);
+  this just makes "always on" declarative, alongside `highlight=` /
+  `selectable=`. `Esc` still exits unless the consumer rebinds it.
+
 ## [0.9.0] - 2026-07-31
 
 ### Changed
