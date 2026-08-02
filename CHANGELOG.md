@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-08-02
+
+### Changed
+
+- **Unified the keyboard highlight and mouse selection into one "current"
+  entry**, like Textual's `ListView`. They were two separate features with two
+  independently positioned cursors — confusing, and no consumer used both at
+  once (each picked one). Now there is a single cursor driven by **both**
+  keyboard and mouse, with two events: `Highlighted` when it **moves** (browse)
+  and `Selected` when it's **committed** (Enter / Space / click). New canonical
+  API: `current`, `set_current(entry)`, `move_current(delta)`, `current_first()`
+  / `current_last()`, `activate()`.
+  - **Back-compat via deprecated aliases** — existing code keeps working:
+    `selectable=` / `highlight=` both enable it; `selected` / `highlighted` both
+    read `current`; `select()` moves-and-commits; `highlight_entry()` /
+    `move_highlight()` / `highlight_first()` / `highlight_last()` map onto the
+    `current` methods; `Activated` is still posted alongside `Selected`;
+    `flowview--selected` still styles the current row (synonym of
+    `flowview--highlight`).
+  - **Behaviour changes to note:** enabling the cursor (`selectable=` *or*
+    `highlight=`) now enables **both** keyboard and mouse — previously
+    `selectable=` was mouse-only and `highlight=` keyboard-only. `Selected` now
+    fires on commit (every click / Enter), not on selection-change; clearing the
+    cursor (click-away, remove, clear) posts `Highlighted(None)` rather than
+    `Selected(None)`.
+
 ## [0.10.0] - 2026-08-02
 
 ### Added

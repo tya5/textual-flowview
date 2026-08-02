@@ -1,12 +1,13 @@
 """textual-flowview keyboard-highlight demo.
 
-`highlight=True` turns on an opt-in keyboard highlight: ↑/↓ move a highlighted entry
-item-by-item (the view follows), PageUp/PageDown move by a page, Home/End jump to
-the first/last entry, and Enter/Space activate it (`FlowView.Activated`).
+`selectable=True` (alias `highlight=True`) turns on the current entry — one cursor
+driven by keyboard and mouse: ↑/↓ move it item-by-item (the view follows),
+PageUp/PageDown by a page, Home/End jump to the first/last entry, and Enter/Space
+commit it (`FlowView.Selected`; `Activated` is a deprecated alias).
 
 These are **focus-scoped, overridable defaults** mapped onto public actions —
-FlowView doesn't claim product-level keybindings. The highlight highlight has **no
-colour of its own**; style `flowview--highlight` in your app (done in CSS below).
+FlowView doesn't claim product-level keybindings. The current row has **no colour
+of its own**; style `flowview--highlight` in your app (done in CSS below).
 
 Run:  PYTHONPATH=src python examples/highlight.py
 Keys: ↑/↓ move · PgUp/PgDn page · Home/End ends · Enter/Space activate · q quit

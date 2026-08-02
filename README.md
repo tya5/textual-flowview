@@ -425,73 +425,55 @@ re-rendered on every paint, so a time-based renderable (e.g.
 `rich.spinner.Spinner`) animates — as long as something is repainting; set
 `animation_fps` > 0 to drive that repaint (see below).
 
-## Selection
+## Current entry (one cursor, keyboard + mouse)
 
-Single-entry selection is **opt-in** — pass `selectable=True`. It's off by
-default, so a plain feed never highlights (or steals a click) unexpectedly. When
-enabled, a click selects the entry; the selection lives on the view, not the
-item, and posts a message you can react to:
+There is **one** current entry — a single cursor moved by both the keyboard and
+the mouse, exactly like Textual's `ListView`. It's **opt-in** (off by default, so
+a plain feed never highlights or steals a click) and turned on with
+`selectable=True` (or the synonym `highlight=True`):
 
 ```python
 flow = FlowView(model=..., presenter=..., selectable=True)
 
 class MyApp(App):
-    def on_flow_view_selected(self, event: FlowView.Selected) -> None:
-        entry = event.entry            # the selected Entry, or None
-        ...
-
-flow.select(entry)         # programmatic (a no-op unless selectable=True)
-flow.clear_selection()
-flow.selected              # -> Entry | None
-```
-
-With `selectable=False` (the default) selection is entirely off — no highlight,
-no `Selected` message, and `select()` is a no-op. Clicks still post
-`FlowView.Clicked` (with the in-entry position) so you can hit-test
-presenter-drawn controls without turning on selection. This is independent of
-Textual's native **text** selection and copy (below), which stays available
-either way.
-
-The highlight is the `flowview--selected` component class, which FlowView leaves
-**unstyled** — it holds no colours of its own, so define one to see a selection:
-
-```css
-FlowView > .flowview--selected { background: $accent 30%; }
-```
-
-## Keyboard highlight (navigable current entry)
-
-`highlight=True` turns on an opt-in **keyboard highlight** — a highlighted
-"current entry" you drive with the keyboard, distinct from mouse selection and
-text selection. (It's the *entry*-level highlight, à la `OptionList`; "cursor" is
-reserved for a per-character text cursor.)
-
-```python
-flow = FlowView(model=..., presenter=..., highlight=True)
-
-class MyApp(App):
     def on_flow_view_highlighted(self, event: FlowView.Highlighted) -> None:
-        ...  # event.entry is the newly highlighted entry (or None)
-    def on_flow_view_activated(self, event: FlowView.Activated) -> None:
-        do_something(event.entry)   # Enter / Space on the highlighted entry
+        browse(event.entry)         # cursor MOVED (arrow key or click), or None
+    def on_flow_view_selected(self, event: FlowView.Selected) -> None:
+        commit(event.entry)         # cursor COMMITTED (Enter / Space / click)
 ```
 
-- **↑/↓** move the highlight one *entry* at a time (the view follows it),
-  **PageUp/PageDown** by a page, **Home/End** to the first/last entry,
-  **Enter/Space** activate it. `move_highlight(delta)`, `highlight_entry(entry)`,
-  `highlight_first()` / `highlight_last()`, `activate()`, and the `highlighted`
-  property are the API those keys call.
-- Keybindings are the **product's** to own. FlowView exposes the highlight as
-  *actions* and ships only **focus-scoped, overridable defaults** for them — no
-  product-level or priority bindings. Rebind or clear them like any Textual
-  widget's `BINDINGS`. With `highlight=False` (the default) the arrow / page /
-  home / end keys just scroll, and Enter/Space bubble to your app untouched.
-- The highlighted row is the `flowview--highlight` component class — **unstyled
-  by default** (FlowView holds no colours), so give it one:
+Two events, one cursor: **`Highlighted`** fires as the cursor *moves* over
+entries (browsing); **`Selected`** fires when it's *committed* (a deliberate
+pick). That split is the whole model — move vs. act.
+
+- **↑/↓** move one *entry* (the view follows), **PageUp/PageDown** by a page,
+  **Home/End** to first/last, **Enter/Space** commit, and a **click** both moves
+  the cursor and commits it. The API those keys call: `set_current(entry)` (move),
+  `move_current(delta)`, `current_first()` / `current_last()`, `activate()`
+  (commit), and the `current` property.
+- Keybindings are the **product's** to own — FlowView exposes the cursor as
+  *actions* and ships only **focus-scoped, overridable defaults**. With the
+  feature off (the default) the arrow / page / home / end keys just scroll and
+  Enter/Space bubble to your app. Clicks still post `FlowView.Clicked` (with the
+  in-entry position) either way, so you can hit-test presenter-drawn controls
+  without turning the cursor on. Independent of Textual's native **text**
+  selection and copy (below), which stays available regardless.
+- The current row is the `flowview--highlight` component class (and its synonym
+  `flowview--selected`), **unstyled by default** — give it a colour:
 
 ```css
 FlowView > .flowview--highlight { background: $accent 30%; }
 ```
+
+> **Unified in 0.11.** `highlight` (keyboard) and `select` (mouse) used to be two
+> separate features with two positions — confusing, and no consumer used both at
+> once. They're now one cursor. The old surface still works as **deprecated
+> aliases**: `highlight=`/`selectable=` both enable it, `selected`/`highlighted`
+> both read `current`, `select()` moves-and-commits, `highlight_entry()` /
+> `move_highlight()` / `highlight_first/last()` map onto the `current` methods,
+> and `Activated` is still posted alongside `Selected`. One behaviour change:
+> enabling the cursor now enables **both** keyboard and mouse (previously
+> `selectable=` was mouse-only and `highlight=` keyboard-only).
 
 See `examples/highlight.py`.
 
@@ -572,13 +554,15 @@ scrolls the content under it. `Ctrl-E` / `Ctrl-Y` (`copy_scroll_line_down` /
 `copy_scroll_line_up`) scroll the view a row while the cursor stays on its buffer
 row until `scrolloff` forces it along.
 
-**Unified with the entry highlight.** With `highlight=True`, the copy cursor and
-the keyboard highlight are *one* position at two zoom levels: the current entry
-is `entry_at_row(cursor row)`. Entering copy mode starts on the highlighted
-entry; **↑/↓ move by entry** (the cursor jumps to the adjacent entry, via
-`copy_cursor_entry`) while **h/j/k/l move by character/row**, and the entry
-highlight and `Highlighted` message follow the cursor. So you can arrow to a
-message and then `v`-select its text in one flow.
+**Unified with the current entry.** With `selectable=True`, the copy cursor and
+the entry cursor are *one* position at two zoom levels: the current entry is
+`entry_at_row(cursor row)`. Entering copy mode **starts on** the current entry;
+**↑/↓ move by entry** (the cursor jumps to the adjacent entry, via
+`copy_cursor_entry`) while **h/j/k/l move by character/row**. So you can arrow to
+a message and then `v`-select its text in one flow. During copy mode the entry
+`current` is held **fixed** — it is *not* moved and **no `Highlighted` is
+posted** as the text cursor roams, because a consumer may mutate an entry in its
+`Highlighted` handler and that must not fire on every keypress.
 
 ## Rich renderables, indicators & animation
 
@@ -782,8 +766,7 @@ in-flight animated scroll where it is (a no-op when nothing is animating).
 viewport: `"start"` (top, the default), `"center"`, `"end"` (bottom), or
 `"nearest"` (minimal scroll — the same as `ensure_visible`). Center a search hit
 so its context is visible: `flow.scroll_to_entry(hit, align="center")`.
-| `select(entry)` / `clear_selection()` | Change selection. |
-| `move_highlight(delta)` / `highlight_entry(entry)` / `highlight_first()` / `highlight_last()` / `activate()` / `highlighted` | Keyboard highlight (`highlight=True`). |
+| `set_current(entry)` / `move_current(delta)` / `current_first()` / `current_last()` / `activate()` / `current` | The current entry — one cursor, keyboard + mouse (`selectable=True`). `select` / `highlight_entry` / `move_highlight` / `selected` / `highlighted` are deprecated aliases. |
 | `find(pred)` / `find_next(pred)` / `find_previous(pred)` | Search entries. |
 | `entry_text(entry)` / `copy_entry(entry)` | Get / copy an entry's rendered text. |
 

@@ -293,9 +293,9 @@ class ShowcaseApp(App):
             entry.update()
 
     def on_flow_view_selected(self, event: FlowView.Selected) -> None:
-        # Click an item to toggle just that one. We clear the selection right
-        # after so clicking the same item again re-fires (select() dedupes a
-        # still-selected entry), giving a clean per-item toggle.
+        # Click an item to toggle just that one. Selected fires on every commit
+        # (click), so re-clicking the same item toggles again; we clear the
+        # cursor after purely so no row stays highlighted between toggles.
         entry = event.entry
         if entry is None:
             return
