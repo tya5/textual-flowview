@@ -435,7 +435,7 @@ class ReynChatPoc(App):
         height: 1fr;
         scrollbar-size-vertical: 0;
     }
-    FlowView > .flowview--selected { background: $accent 25%; }
+    FlowView > .flowview--highlight { background: $accent 25%; }
     /* A 1-row spacer (margin-top) sits between the conversation and the input.
        The top/bottom rules live on the row so the ❯ gutter shares them; the
        TextArea itself is borderless + edge-to-edge like CC / reyn. */

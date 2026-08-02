@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-08-02
+
+### Removed
+
+- **Dropped the deprecated highlight/select aliases** added in 0.11.0 — the
+  unified "current entry" cursor is now the *only* surface, so there is one
+  obvious way to do it rather than two names for everything. Removed: the
+  `highlight=` constructor flag (use `selectable=`), the `selected` /
+  `highlighted` properties (use `current`), the `select()` / `clear_selection()`
+  / `highlight_entry()` / `move_highlight()` / `highlight_first()` /
+  `highlight_last()` methods (use `set_current()` / `move_current()` /
+  `current_first()` / `current_last()` / `activate()`), the `Activated` message
+  (handle `Selected`), and the `flowview--selected` component class (style
+  `flowview--highlight`). Migration is a mechanical rename; see the *Current
+  entry* section in the README.
+
 ## [0.11.0] - 2026-08-02
 
 ### Changed

@@ -96,7 +96,6 @@ class FlowView(ScrollView, Generic[T]):
     can_focus = True
 
     COMPONENT_CLASSES: ClassVar[set[str]] = {
-        "flowview--selected",
         "flowview--sticky-header",
         "flowview--highlight",
     }
@@ -104,7 +103,6 @@ class FlowView(ScrollView, Generic[T]):
     | Class | Applied to |
     | :- | :- |
     | ``flowview--highlight`` | The current entry's rows (``selectable=True``). |
-    | ``flowview--selected`` | Synonym of ``flowview--highlight`` (both style the current entry). |
     | ``flowview--sticky-header`` | The pinned sticky header's rows. |
 
     FlowView ships **no colours of its own** — these classes are unstyled by
@@ -115,8 +113,8 @@ class FlowView(ScrollView, Generic[T]):
     to Textual's ``screen--selection``.
     """
 
-    # Focus-scoped, overridable defaults. They map keys onto the highlight
-    # *actions* (the real API); with ``highlight=False`` the arrow / page / home /
+    # Focus-scoped, overridable defaults. They map keys onto the cursor
+    # *actions* (the real API); with ``selectable=False`` the arrow / page / home /
     # end actions fall through to plain scrolling, and enter/space are disabled
     # (see ``check_action``) so they bubble to the app. Override or clear them
     # freely — keybinding policy stays the product's.
@@ -227,26 +225,12 @@ class FlowView(ScrollView, Generic[T]):
 
     class Highlighted(Message):
         """Posted when the current entry **moves** — the cursor browsing across
-        entries by keyboard or mouse (``selectable`` / ``highlight`` on). Fires
+        entries by keyboard or mouse (``selectable=True``). Fires
         on every change; committing is :class:`Selected`. ``entry`` is the newly
         current entry, or ``None`` when cleared.
         """
 
         def __init__(self, flow_view: FlowView[Any], entry: Entry[Any] | None) -> None:
-            self.flow_view = flow_view
-            self.entry = entry
-            super().__init__()
-
-        @property
-        def control(self) -> FlowView[Any]:
-            return self.flow_view
-
-    class Activated(Message):
-        """**Deprecated** — posted alongside :class:`Selected` on commit, for
-        back-compat. Handle :class:`Selected` instead. ``entry`` is the entry.
-        """
-
-        def __init__(self, flow_view: FlowView[Any], entry: Entry[Any]) -> None:
             self.flow_view = flow_view
             self.entry = entry
             super().__init__()
@@ -281,7 +265,6 @@ class FlowView(ScrollView, Generic[T]):
         right_decorator: FlowDecorator[T] | None = None,
         right_gutter_width: int | None = None,
         selectable: bool = False,
-        highlight: bool = False,
         copy_mode: bool = False,
         copy_scrolloff: int = 0,
         clipboard: Callable[[str], bool | None] | None = None,
@@ -378,12 +361,10 @@ class FlowView(ScrollView, Generic[T]):
         self._follow_top = anchor is Anchor.STICKY_TOP
         # One "current" entry — a single cursor driven by BOTH keyboard and
         # mouse (like Textual's ListView), owned by the view (not the entry).
-        # Exclusive single-selection; there is no multi-select. Off by default:
-        # `selectable=` / `highlight=` are synonyms that turn it on (keeping both
-        # spellings for back-compat; they used to be two separate features).
-        # When off, arrow/page/home/end fall through to scrolling and enter/space
-        # bubble (see check_action).
-        self._interactive = selectable or highlight
+        # Exclusive single-selection; there is no multi-select. Off by default
+        # (`selectable=True` turns it on). When off, arrow/page/home/end fall
+        # through to scrolling and enter/space bubble (see check_action).
+        self._interactive = selectable
         self._current: Entry[T] | None = None
         # Text/copy cursor mode (vim-like): a character cursor over the rendered
         # content, drawn via the widget's own text selection. Entered at runtime
@@ -697,14 +678,14 @@ class FlowView(ScrollView, Generic[T]):
     @property
     def current(self) -> Entry[T] | None:
         """The current entry — the single cursor moved by keyboard and mouse — or
-        ``None``. Enabled by ``selectable=True`` / ``highlight=True``."""
+        ``None``. Enabled by ``selectable=True``."""
         return self._current
 
     def set_current(self, entry: Entry[T] | None) -> None:
         """Move the cursor to ``entry`` (or clear it with ``None``), scrolling it
         into view and posting :class:`Highlighted` **when it changes**. A no-op if
         the entry is dead/hidden, already current, or the view is not interactive
-        (``selectable`` / ``highlight`` both off — the default). This is the
+        (``selectable=False`` — the default). This is the
         *move*; committing (Enter / click) is :meth:`activate`."""
         if not self._interactive:
             return
@@ -749,51 +730,9 @@ class FlowView(ScrollView, Generic[T]):
 
     def activate(self) -> None:
         """Commit the current entry — posts :class:`Selected` (Enter / Space /
-        click). A no-op with no current entry. Also posts the deprecated
-        :class:`Activated` for back-compat; prefer handling ``Selected``."""
+        click). A no-op with no current entry."""
         if self._current is not None:
             self.post_message(self.Selected(self, self._current))
-            self.post_message(self.Activated(self, self._current))
-
-    # -- deprecated aliases (highlight/select were one concept all along) -----
-
-    @property
-    def selected(self) -> Entry[T] | None:
-        """Deprecated alias of :attr:`current`."""
-        return self._current
-
-    @property
-    def highlighted(self) -> Entry[T] | None:
-        """Deprecated alias of :attr:`current`."""
-        return self._current
-
-    def select(self, entry: Entry[T] | None) -> None:
-        """Deprecated: move to ``entry`` and **commit** it (posts :class:`Selected`),
-        the old click-select behaviour. Prefer :meth:`set_current` (move) +
-        :meth:`activate` (commit)."""
-        self.set_current(entry)
-        if entry is not None:
-            self.activate()
-
-    def clear_selection(self) -> None:
-        """Clear the current entry (if any)."""
-        self.set_current(None)
-
-    def highlight_entry(self, entry: Entry[T] | None) -> None:
-        """Deprecated alias of :meth:`set_current`."""
-        self.set_current(entry)
-
-    def move_highlight(self, delta: int) -> None:
-        """Deprecated alias of :meth:`move_current`."""
-        self.move_current(delta)
-
-    def highlight_first(self) -> None:
-        """Deprecated alias of :meth:`current_first`."""
-        self.current_first()
-
-    def highlight_last(self) -> None:
-        """Deprecated alias of :meth:`current_last`."""
-        self.current_last()
 
     def check_action(
         self, action: str, parameters: tuple[object, ...]
@@ -1849,10 +1788,6 @@ class FlowView(ScrollView, Generic[T]):
         if sticky:
             line = self._overlay_component(line, "flowview--sticky-header")
         if self._current is entry:
-            # One current row. Both component classes are applied to it so CSS
-            # keyed on either `flowview--highlight` or the older
-            # `flowview--selected` still styles it (they are now synonyms).
-            line = self._overlay_component(line, "flowview--selected")
             line = self._overlay_component(line, "flowview--highlight")
         return line
 

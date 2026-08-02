@@ -70,7 +70,7 @@ async def test_find_next_uses_selection_as_origin() -> None:
     async with app.run_test() as pilot:
         await pilot.pause()
         view = app.query_one(FlowView)
-        view.select(es[0])
+        view.set_current(es[0])
         await pilot.pause()
         assert view.find_next(_has("a")) is es[1]
 

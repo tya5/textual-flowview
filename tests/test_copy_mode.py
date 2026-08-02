@@ -236,7 +236,7 @@ class HighlightCopyApp(CopyApp):
     def compose(self) -> ComposeResult:
         self.flow = FlowView(
             model=self.model, presenter=RowPresenter(), spacing=1,
-            estimated_height=1, highlight=True,
+            estimated_height=1, selectable=True,
         )
         yield self.flow
 
@@ -258,19 +258,19 @@ async def test_copy_mode_starts_at_highlight_but_leaves_it_fixed() -> None:
         v.focus()
         es = list(app.model)
 
-        v.highlight_entry(es[1])          # highlight msg b
+        v.set_current(es[1])          # highlight msg b
         await pilot.pause()               # let that Highlighted flush
         app.highlights = []
         v.enter_copy_mode()               # starts on msg b (no Highlighted fired)
         await pilot.pause()
         assert v.entry_at_row(v._tc_row) is es[1]
-        assert v.highlighted is es[1]
+        assert v.current is es[1]
 
         await pilot.press("down")          # text cursor jumps entry -> msg c
         await pilot.press("j", "down")     # more cursor movement
         await pilot.pause()
         assert v.entry_at_row(v._tc_row) is not es[1]  # cursor moved off msg b
-        assert v.highlighted is es[1]                  # highlight stayed put
+        assert v.current is es[1]                  # highlight stayed put
         assert app.highlights == []                    # no Highlighted side effects
 
 

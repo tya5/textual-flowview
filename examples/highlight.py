@@ -1,9 +1,9 @@
-"""textual-flowview keyboard-highlight demo.
+"""textual-flowview current-entry demo.
 
-`selectable=True` (alias `highlight=True`) turns on the current entry — one cursor
-driven by keyboard and mouse: ↑/↓ move it item-by-item (the view follows),
-PageUp/PageDown by a page, Home/End jump to the first/last entry, and Enter/Space
-commit it (`FlowView.Selected`; `Activated` is a deprecated alias).
+`selectable=True` turns on the current entry — one cursor driven by keyboard and
+mouse: ↑/↓ move it item-by-item (the view follows), PageUp/PageDown by a page,
+Home/End jump to the first/last entry, and Enter/Space (or a click) commit it
+(`FlowView.Selected`; `FlowView.Highlighted` fires as it moves).
 
 These are **focus-scoped, overridable defaults** mapped onto public actions —
 FlowView doesn't claim product-level keybindings. The current row has **no colour
@@ -64,7 +64,7 @@ class HighlightApp(App):
             presenter=CommandPresenter(),
             spacing=0,
             estimated_height=1,
-            highlight=True,   # opt-in keyboard highlight
+            selectable=True,   # opt-in current-entry cursor
         )
         yield self.view
         yield Footer()
@@ -72,14 +72,15 @@ class HighlightApp(App):
     def on_mount(self) -> None:
         self.commands.extend(COMMANDS)
         self.view.focus()
-        self.view.highlight_first()
+        self.view.current_first()
 
     def on_flow_view_highlighted(self, event: FlowView.Highlighted) -> None:
         if event.entry is not None:
             self.sub_title = f"highlight on {event.entry.item.name}"
 
-    def on_flow_view_activated(self, event: FlowView.Activated) -> None:
-        self.notify(f"activated {event.entry.item.name}")
+    def on_flow_view_selected(self, event: FlowView.Selected) -> None:
+        if event.entry is not None:
+            self.notify(f"activated {event.entry.item.name}")
 
 
 if __name__ == "__main__":

@@ -49,7 +49,7 @@ async def test_click_selects_entry_under_cursor() -> None:
         # each row is 2 tall; y=2..3 is the second entry
         await pilot.click(FlowView, offset=(2, 2))
         await pilot.pause()
-        assert view.selected is entries[1]
+        assert view.current is entries[1]
         assert app.events[-1] is entries[1]
 
 
@@ -61,7 +61,7 @@ async def test_clicking_empty_space_clears_selection() -> None:
     async with app.run_test(size=(30, 20)) as pilot:
         await pilot.pause()
         view = app.query_one(FlowView)
-        view.select(entries[0])
+        view.set_current(entries[0])
         await pilot.pause()
         assert view.current is entries[0]
         # click well below the 4 rows of content
@@ -86,7 +86,7 @@ async def test_moving_to_same_entry_does_not_rehighlight() -> None:
         view.set_current(entry)
         await pilot.pause()
         assert app.highlights.count(entry) == 1   # move deduped
-        view.select(entry)                         # explicit commit re-fires
+        view.activate()                         # explicit commit re-fires
         await pilot.pause()
         assert app.events.count(entry) >= 1
 
@@ -100,7 +100,7 @@ async def test_removing_selected_entry_clears_selection() -> None:
     async with app.run_test(size=(30, 20)) as pilot:
         await pilot.pause()
         view = app.query_one(FlowView)
-        view.select(a)
+        view.set_current(a)
         await pilot.pause()
         a.remove()
         await pilot.pause()
@@ -116,11 +116,11 @@ async def test_clear_drops_selection() -> None:
     async with app.run_test(size=(30, 20)) as pilot:
         await pilot.pause()
         view = app.query_one(FlowView)
-        view.select(a)
+        view.set_current(a)
         await pilot.pause()
         model.clear()
         await pilot.pause()
-        assert view.selected is None
+        assert view.current is None
 
 
 @pytest.mark.asyncio
@@ -155,6 +155,6 @@ async def test_selecting_dead_entry_is_ignored() -> None:
         await pilot.pause()
         view = app.query_one(FlowView)
         a.remove()
-        view.select(a)  # dead entry
+        view.set_current(a)  # dead entry
         await pilot.pause()
-        assert view.selected is None
+        assert view.current is None

@@ -215,7 +215,7 @@ class ShowcaseApp(App):
         padding: 1 2;
         background: $surface;
     }
-    FlowView > .flowview--selected { background: $accent 25%; }
+    FlowView > .flowview--highlight { background: $accent 25%; }
     """
     BINDINGS = [
         ("q", "quit", "Quit"),
@@ -301,7 +301,7 @@ class ShowcaseApp(App):
             return
         entry.item.collapsed = not entry.item.collapsed
         entry.update()
-        event.control.clear_selection()
+        event.control.set_current(None)
 
     async def _stream(self) -> None:
         entry = self.feed.append(Event("log", "assistant", "09:31:31", ""))

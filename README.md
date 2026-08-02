@@ -430,7 +430,7 @@ re-rendered on every paint, so a time-based renderable (e.g.
 There is **one** current entry — a single cursor moved by both the keyboard and
 the mouse, exactly like Textual's `ListView`. It's **opt-in** (off by default, so
 a plain feed never highlights or steals a click) and turned on with
-`selectable=True` (or the synonym `highlight=True`):
+`selectable=True`:
 
 ```python
 flow = FlowView(model=..., presenter=..., selectable=True)
@@ -458,22 +458,12 @@ pick). That split is the whole model — move vs. act.
   in-entry position) either way, so you can hit-test presenter-drawn controls
   without turning the cursor on. Independent of Textual's native **text**
   selection and copy (below), which stays available regardless.
-- The current row is the `flowview--highlight` component class (and its synonym
-  `flowview--selected`), **unstyled by default** — give it a colour:
+- The current row is the `flowview--highlight` component class, **unstyled by
+  default** — give it a colour:
 
 ```css
 FlowView > .flowview--highlight { background: $accent 30%; }
 ```
-
-> **Unified in 0.11.** `highlight` (keyboard) and `select` (mouse) used to be two
-> separate features with two positions — confusing, and no consumer used both at
-> once. They're now one cursor. The old surface still works as **deprecated
-> aliases**: `highlight=`/`selectable=` both enable it, `selected`/`highlighted`
-> both read `current`, `select()` moves-and-commits, `highlight_entry()` /
-> `move_highlight()` / `highlight_first/last()` map onto the `current` methods,
-> and `Activated` is still posted alongside `Selected`. One behaviour change:
-> enabling the cursor now enables **both** keyboard and mouse (previously
-> `selectable=` was mouse-only and `highlight=` keyboard-only).
 
 See `examples/highlight.py`.
 
@@ -513,7 +503,7 @@ keybinding policy stays yours. See `examples/copy_mode.py`.
 default. Bind a key to `toggle_copy_mode()` for a switch, or pass
 `FlowView(copy_mode=True)` to start in it on mount for a **copy-cursor-first**
 widget with no toggle (motions and yank are live from the start). Pick the
-interaction model: `highlight=True` for entry navigation, `copy_mode=True` for
+interaction model: `selectable=True` for entry navigation, `copy_mode=True` for
 an always-on text cursor, or neither and drive `enter_copy_mode()` yourself.
 (`copy_mode=True` only sets the initial state; `Esc` still exits unless you
 rebind it — override the `escape` binding to lock the mode on.)
@@ -766,7 +756,7 @@ in-flight animated scroll where it is (a no-op when nothing is animating).
 viewport: `"start"` (top, the default), `"center"`, `"end"` (bottom), or
 `"nearest"` (minimal scroll — the same as `ensure_visible`). Center a search hit
 so its context is visible: `flow.scroll_to_entry(hit, align="center")`.
-| `set_current(entry)` / `move_current(delta)` / `current_first()` / `current_last()` / `activate()` / `current` | The current entry — one cursor, keyboard + mouse (`selectable=True`). `select` / `highlight_entry` / `move_highlight` / `selected` / `highlighted` are deprecated aliases. |
+| `set_current(entry)` / `move_current(delta)` / `current_first()` / `current_last()` / `activate()` / `current` | The current entry — one cursor, keyboard + mouse (`selectable=True`). |
 | `find(pred)` / `find_next(pred)` / `find_previous(pred)` | Search entries. |
 | `entry_text(entry)` / `copy_entry(entry)` | Get / copy an entry's rendered text. |
 

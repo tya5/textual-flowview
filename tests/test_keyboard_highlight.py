@@ -36,7 +36,7 @@ class HighlightApp(App):
     def on_flow_view_highlighted(self, event: FlowView.Highlighted) -> None:
         self.highlights.append(event.entry)
 
-    def on_flow_view_activated(self, event: FlowView.Activated) -> None:
+    def on_flow_view_selected(self, event: FlowView.Selected) -> None:
         self.activations.append(event.entry)
 
 
@@ -51,7 +51,7 @@ def _model(n: int = 50) -> FlowModel[Row]:
 async def test_highlight_moves_by_item_and_follows() -> None:
     model = _model()
     entries = list(model)
-    app = HighlightApp(model, highlight=True)
+    app = HighlightApp(model, selectable=True)
     async with app.run_test(size=(30, 10)) as pilot:
         await pilot.pause()
         await pilot.pause()
@@ -60,13 +60,13 @@ async def test_highlight_moves_by_item_and_follows() -> None:
         await pilot.pause()
         await pilot.press("down", "down", "down")
         await pilot.pause()
-        assert view.highlighted is entries[2]
+        assert view.current is entries[2]
         assert app.highlights[-1] is entries[2]
         # many downs -> highlight moves one item each and the view auto-scrolls
         for _ in range(20):
             await pilot.press("down")
         await pilot.pause()
-        assert view.highlighted is entries[22]
+        assert view.current is entries[22]
         assert int(view.scroll_offset.y) > 0  # followed the highlight off-screen
 
 
@@ -74,7 +74,7 @@ async def test_highlight_moves_by_item_and_follows() -> None:
 async def test_highlight_home_end_and_clamp() -> None:
     model = _model(20)
     entries = list(model)
-    app = HighlightApp(model, highlight=True)
+    app = HighlightApp(model, selectable=True)
     async with app.run_test(size=(30, 10)) as pilot:
         await pilot.pause()
         await pilot.pause()
@@ -83,23 +83,23 @@ async def test_highlight_home_end_and_clamp() -> None:
         await pilot.pause()
         await pilot.press("end")
         await pilot.pause()
-        assert view.highlighted is entries[-1]
+        assert view.current is entries[-1]
         await pilot.press("down")  # clamp at the end
         await pilot.pause()
-        assert view.highlighted is entries[-1]
+        assert view.current is entries[-1]
         await pilot.press("home")
         await pilot.pause()
-        assert view.highlighted is entries[0]
+        assert view.current is entries[0]
         await pilot.press("up")  # clamp at the start
         await pilot.pause()
-        assert view.highlighted is entries[0]
+        assert view.current is entries[0]
 
 
 @pytest.mark.asyncio
 async def test_enter_activates_highlight() -> None:
     model = _model(10)
     entries = list(model)
-    app = HighlightApp(model, highlight=True)
+    app = HighlightApp(model, selectable=True)
     async with app.run_test(size=(30, 10)) as pilot:
         await pilot.pause()
         await pilot.pause()
@@ -126,11 +126,11 @@ async def test_highlight_disabled_by_default_arrows_scroll() -> None:
         view = app.query_one(FlowView)
         view.focus()
         await pilot.pause()
-        assert view.highlighted is None
+        assert view.current is None
         await pilot.press("down", "down", "down")
         await pilot.pause()
         # arrows scrolled the viewport; no highlight was created
-        assert view.highlighted is None
+        assert view.current is None
         assert int(view.scroll_offset.y) > 0
         # enter is not consumed -> no activation
         await pilot.press("enter")
@@ -142,24 +142,24 @@ async def test_highlight_disabled_by_default_arrows_scroll() -> None:
 async def test_highlight_skips_hidden_and_clears_on_remove() -> None:
     model = _model(10)
     entries = list(model)
-    app = HighlightApp(model, highlight=True)
+    app = HighlightApp(model, selectable=True)
     async with app.run_test(size=(30, 10)) as pilot:
         await pilot.pause()
         await pilot.pause()
         view = app.query_one(FlowView)
-        view.highlight_entry(entries[3])
+        view.set_current(entries[3])
         await pilot.pause()
-        assert view.highlighted is entries[3]
+        assert view.current is entries[3]
         # hiding the highlight entry clears the highlight
         entries[3].hide()
         await pilot.pause()
-        assert view.highlighted is None
+        assert view.current is None
         # highlight_entry a hidden entry is a no-op
-        view.highlight_entry(entries[3])
-        assert view.highlighted is None
+        view.set_current(entries[3])
+        assert view.current is None
         # removing the highlight entry clears it
-        view.highlight_entry(entries[5])
-        assert view.highlighted is entries[5]
+        view.set_current(entries[5])
+        assert view.current is entries[5]
         entries[5].remove()
         await pilot.pause()
-        assert view.highlighted is None
+        assert view.current is None

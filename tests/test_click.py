@@ -104,10 +104,10 @@ async def test_not_selectable_by_default() -> None:
         view = app.query_one(FlowView)
         await pilot.click(FlowView, offset=(2, 0))
         await pilot.pause()
-        assert view.selected is None  # click reported, but nothing selected
+        assert view.current is None  # click reported, but nothing selected
         assert app.clicks  # Clicked still fired
-        view.select(es[1])  # programmatic select is a no-op too
-        assert view.selected is None
+        view.set_current(es[1])  # programmatic select is a no-op too
+        assert view.current is None
 
 
 @pytest.mark.asyncio
@@ -120,6 +120,6 @@ async def test_selectable_true_selects_on_click() -> None:
         view = app.query_one(FlowView)
         await pilot.click(FlowView, offset=(2, 1))  # second row
         await pilot.pause()
-        assert view.selected is es[1]
-        view.clear_selection()
-        assert view.selected is None
+        assert view.current is es[1]
+        view.set_current(None)
+        assert view.current is None

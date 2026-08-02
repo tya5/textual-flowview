@@ -164,11 +164,11 @@ async def test_hiding_selected_entry_clears_selection() -> None:
     async with app.run_test(size=(40, 40)) as pilot:
         await pilot.pause()
         view = app.query_one(FlowView)
-        view.select(a)
+        view.set_current(a)
         await pilot.pause()
         a.hide()
         await pilot.pause()
-        assert view.selected is None
+        assert view.current is None
 
 
 @pytest.mark.asyncio

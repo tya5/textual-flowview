@@ -105,7 +105,7 @@ class GroupsApp(App):
     CSS = """
     Screen { background: $surface; }
     FlowView { height: 1fr; padding: 1 2; }
-    FlowView > .flowview--selected { background: $accent 20%; }
+    FlowView > .flowview--highlight { background: $accent 20%; }
     FlowView > .flowview--sticky-header { background: $panel; }
     """
     BINDINGS = [
@@ -160,7 +160,7 @@ class GroupsApp(App):
             return
         kids = self._children.get(entry.id, [])
         self._set_group(entry, kids, not entry.item.collapsed)
-        event.control.clear_selection()
+        event.control.set_current(None)
 
     def _set_group(
         self, header: Entry[Node], kids: list[Entry[Node]], collapsed: bool
