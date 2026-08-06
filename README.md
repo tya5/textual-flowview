@@ -467,46 +467,50 @@ FlowView > .flowview--highlight { background: $accent 30%; }
 
 See `examples/highlight.py`.
 
-## Copy mode (a vim-style text cursor)
+## Text cursor & visual mode (vim-style)
 
-An opt-in **copy mode** puts a character cursor over the rendered content — move
-it across entries, make a visual selection, and yank, like tmux copy-mode / vim
-visual. It's drawn with the widget's own text selection, so a yank copies exactly
-what's highlighted.
+FlowView has a **text cursor** — a character cursor over the rendered content
+(across entries), with a **visual mode** for selection and yank, like vim visual.
+It's drawn with the widget's own text selection, so a yank copies exactly what's
+highlighted. There is **no separate "copy mode" to enter**: the movement keys are
+always live, and **`c` shows/hides** the cursor block.
 
 ```python
-flow = FlowView(model=..., presenter=...)
-
-class MyApp(App):
-    BINDINGS = [("c", "start_copy", "Copy mode")]
-    def action_start_copy(self) -> None:
-        self.query_one(FlowView).enter_copy_mode()
+flow = FlowView(model=..., presenter=..., selectable=True)  # `c` toggles the cursor
+# or FlowView(..., cursor=True) to show it on mount
 ```
 
+**Two zoom levels, one cursor.** While the cursor is **hidden** (the default),
+`j`/`k` (and `↑`/`↓`) move the **entry** cursor (`current`), or scroll when not
+`selectable`. Press **`c`** to show the cursor and the vim keys drive it at the
+**character** level. The text cursor is **synced** with the entry highlight —
+moving it moves `current` and posts `Highlighted` — so you can navigate and then
+select in one flow.
+
+**Visual mode** is the only real mode: `v` / `V` starts a selection at the cursor,
+movement extends it, `y` yanks, `Esc` cancels. While selecting, the **anchor (and
+the entry highlight) is frozen** — no `Highlighted` fires — so the content you saw
+at `v` doesn't shift mid-select (a consumer may mutate an entry in its
+`Highlighted` handler). On exit the highlight catches up to where the cursor
+ended.
+
 Every motion is a **public method** (and an action the default keys map onto):
-`copy_cursor_move`, `copy_cursor_line_start` / `line_end` / `first_nonblank`,
-`copy_cursor_word_forward` / `word_back` / `word_end`, `copy_cursor_top` /
-`bottom`, `copy_visual()` / `copy_visual_line()`, `copy_yank()`,
-`copy_scroll_center` / `top` / `bottom`, `copy_scroll_line_down` / `line_up`,
-`copy_scroll_half_page_down` / `half_page_up` / `page_down` / `page_up`, and
-`enter_copy_mode()` / `exit_copy_mode()` / `toggle_copy_mode()` / `copy_mode`.
+`cursor_move`, `cursor_line_start` / `line_end` / `first_nonblank`,
+`cursor_word_forward` / `word_back` / `word_end`, `cursor_top` / `bottom`,
+`cursor_entry` / `entry_start` / `entry_end`, `visual()` / `visual_line()`,
+`yank()`, `cursor_scroll_center` / `to_top` / `to_bottom`,
+`cursor_scroll_line_down` / `line_up`, `cursor_scroll_half_page_down` / `_up` /
+`cursor_scroll_page_down` / `_up`, `show_cursor()` / `hide_cursor()` /
+`toggle_cursor()` / `cursor_visible`.
 
-The default keys are vim-like and **live only while in copy mode** (they bubble
-to your app otherwise): `h`/`j`/`k`/`l`, `w`/`b`/`e`, `0`/`$`/`^`, `gg`/`G`,
-`[`/`]` (current entry top/bottom), `v`, `V`, `y`, `*` / `n` / `N` (search the
-selection, then next/prev), `zz`/`zt`/`zb`, `Ctrl-E`/`Ctrl-Y` (line),
-`Ctrl-D`/`Ctrl-U` (half page), `Ctrl-F`/`Ctrl-B` (page), `Esc`. They're normal
-focus-scoped `BINDINGS` — subclass FlowView and override them to rebind; the
-keybinding policy stays yours. See `examples/copy_mode.py`.
-
-**Toggle, or always on.** Copy mode is entirely opt-in — nothing enters it by
-default. Bind a key to `toggle_copy_mode()` for a switch, or pass
-`FlowView(copy_mode=True)` to start in it on mount for a **copy-cursor-first**
-widget with no toggle (motions and yank are live from the start). Pick the
-interaction model: `selectable=True` for entry navigation, `copy_mode=True` for
-an always-on text cursor, or neither and drive `enter_copy_mode()` yourself.
-(`copy_mode=True` only sets the initial state; `Esc` still exits unless you
-rebind it — override the `escape` binding to lock the mode on.)
+The default vim keys: **`c`** show/hide cursor, `h`/`j`/`k`/`l`, `w`/`b`/`e`,
+`0`/`$`/`^`, `g`/`G`, `[`/`]` (current entry top/bottom), `v`, `V`, `y`,
+`*` / `n` / `N` (search the selection, then next/prev), `zz`/`zt`/`zb`,
+`Ctrl-E`/`Ctrl-Y` (line), `Ctrl-D`/`Ctrl-U` (half page), `Ctrl-F`/`Ctrl-B` (page),
+`Esc` (cancel a selection). Char-level keys (`h`/`l`/`w`/`y`/…) **bubble to your
+app while the cursor is hidden**, so a plain feed doesn't steal them; `j`/`k`
+stay live for navigation. They're normal focus-scoped `BINDINGS` — subclass
+FlowView and override them to rebind. See `examples/copy_mode.py`.
 
 **Clipboard.** Yank goes through `write_clipboard()`, which by default uses
 Textual's `App.copy_to_clipboard` — the terminal's **OSC 52** escape. That does
@@ -525,34 +529,19 @@ copy, and the sink's result is observable.
 > `clipboard=lambda t: (pyperclip.copy(t), True)[1]` (pyperclip writes
 > `CF_UNICODETEXT` directly, so no code-page in the loop).
 
-**Mode changes.** `FlowView.CopyModeChanged` is posted on both entering and
-leaving copy mode (`event.copy_mode` is the new state) — handle it to keep your
-status line / conflicting keys in sync, especially the `Esc` exit that happens
-inside the widget.
+**Search the selection.** `search_selection()` (default `*`) searches for the
+current visual selection — or the word under the cursor if there's no selection —
+and jumps to the next occurrence; `search_next()` / `search_previous()` (`n` /
+`N`) repeat, wrapping. `search(query)` searches an arbitrary string. (This is a
+*text* search over the content; the entry-level `find` / `find_next` by predicate
+is separate.)
 
-**Search the selection.** `copy_search_selection()` (default `*`) searches for
-the current visual selection — or the word under the cursor if there's no
-selection — and jumps to the next occurrence; `copy_search_next()` / `previous()`
-(`n` / `N`) repeat, wrapping. `copy_search(query)` searches an arbitrary string.
-(This is a *text* search over the content; the entry-level `find` / `find_next`
-by predicate is separate.)
-
-`copy_scrolloff` keeps N rows of context above/below the cursor (vim
+`cursor_scrolloff` keeps N rows of context above/below the cursor (vim
 `scrolloff`); the view scrolls early to preserve it. It's capped at half the
-viewport, so **`flow.copy_scrolloff = 999` pins the cursor to the centre** and
-scrolls the content under it. `Ctrl-E` / `Ctrl-Y` (`copy_scroll_line_down` /
-`copy_scroll_line_up`) scroll the view a row while the cursor stays on its buffer
-row until `scrolloff` forces it along.
-
-**Unified with the current entry.** With `selectable=True`, the copy cursor and
-the entry cursor are *one* position at two zoom levels: the current entry is
-`entry_at_row(cursor row)`. Entering copy mode **starts on** the current entry;
-**↑/↓ move by entry** (the cursor jumps to the adjacent entry, via
-`copy_cursor_entry`) while **h/j/k/l move by character/row**. So you can arrow to
-a message and then `v`-select its text in one flow. During copy mode the entry
-`current` is held **fixed** — it is *not* moved and **no `Highlighted` is
-posted** as the text cursor roams, because a consumer may mutate an entry in its
-`Highlighted` handler and that must not fire on every keypress.
+viewport, so **`flow.cursor_scrolloff = 999` pins the cursor to the centre** and
+scrolls the content under it. `Ctrl-E` / `Ctrl-Y` (`cursor_scroll_line_down` /
+`cursor_scroll_line_up`) scroll the view a row while the cursor stays on its
+buffer row until `scrolloff` forces it along.
 
 ## Rich renderables, indicators & animation
 

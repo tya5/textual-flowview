@@ -114,47 +114,51 @@ class FlowView(ScrollView, Generic[T]):
     """
 
     # Focus-scoped, overridable defaults. They map keys onto the cursor
-    # *actions* (the real API); with ``selectable=False`` the arrow / page / home /
-    # end actions fall through to plain scrolling, and enter/space are disabled
-    # (see ``check_action``) so they bubble to the app. Override or clear them
-    # freely — keybinding policy stays the product's.
+    # *actions* (the real API). ↑/↓/PgUp/PgDn/Home/End drive the entry cursor
+    # (or scroll when not `selectable`); the vim keys drive the text cursor and
+    # are always live (see check_action for which bubble when the cursor is
+    # hidden). Override or clear them freely — keybinding policy stays the
+    # product's.
     BINDINGS: ClassVar[list[BindingType]] = [
-        Binding("up", "highlight_up", "Highlight up", show=False),
-        Binding("down", "highlight_down", "Highlight down", show=False),
-        Binding("pageup", "highlight_page_up", "Highlight page up", show=False),
-        Binding("pagedown", "highlight_page_down", "Highlight page down", show=False),
-        Binding("home", "highlight_home", "Highlight to first", show=False),
-        Binding("end", "highlight_end", "Highlight to last", show=False),
+        Binding("up", "highlight_up", "Cursor up", show=False),
+        Binding("down", "highlight_down", "Cursor down", show=False),
+        Binding("pageup", "highlight_page_up", "Cursor page up", show=False),
+        Binding("pagedown", "highlight_page_down", "Cursor page down", show=False),
+        Binding("home", "highlight_home", "Cursor to first", show=False),
+        Binding("end", "highlight_end", "Cursor to last", show=False),
         Binding("enter", "activate", "Activate", show=False),
         Binding("space", "activate", "Activate", show=False),
-        # Copy-mode (vim-like) — live only while in copy mode (see check_action),
-        # so these keys bubble to the app otherwise. Rebind/clear as usual.
-        Binding("h", "copy_left", "Left", show=False),
-        Binding("l", "copy_right", "Right", show=False),
-        Binding("k", "copy_up", "Up", show=False),
-        Binding("j", "copy_down", "Down", show=False),
-        Binding("0", "copy_line_start", "Line start", show=False),
-        Binding("dollar_sign", "copy_line_end", "Line end", show=False),
-        Binding("circumflex_accent", "copy_first_nonblank", "First non-blank", show=False),
-        Binding("w", "copy_word_forward", "Word →", show=False),
-        Binding("b", "copy_word_back", "Word ←", show=False),
-        Binding("e", "copy_word_end", "Word end", show=False),
-        Binding("G", "copy_bottom", "Bottom", show=False),
-        Binding("left_square_bracket", "copy_entry_start", "Entry top", show=False),
-        Binding("right_square_bracket", "copy_entry_end", "Entry bottom", show=False),
-        Binding("v", "copy_visual", "Visual", show=False),
-        Binding("V", "copy_visual_line", "Visual line", show=False),
-        Binding("y", "copy_yank", "Yank", show=False),
-        Binding("asterisk", "copy_search_selection", "Search selection", show=False),
-        Binding("n", "copy_search_next", "Search next", show=False),
-        Binding("N", "copy_search_previous", "Search prev", show=False),
-        Binding("ctrl+e", "copy_scroll_line_down", "Scroll line down", show=False),
-        Binding("ctrl+y", "copy_scroll_line_up", "Scroll line up", show=False),
-        Binding("ctrl+d", "copy_scroll_half_page_down", "Half page down", show=False),
-        Binding("ctrl+u", "copy_scroll_half_page_up", "Half page up", show=False),
-        Binding("ctrl+f", "copy_scroll_page_down", "Page down", show=False),
-        Binding("ctrl+b", "copy_scroll_page_up", "Page up", show=False),
-        Binding("escape", "copy_exit", "Exit copy mode", show=False),
+        # Text cursor (vim-like), always live. `c` shows/hides it; char-level keys
+        # bubble to the app while it is hidden (see check_action). Rebind/clear
+        # as usual.
+        Binding("c", "toggle_cursor", "Toggle cursor", show=False),
+        Binding("h", "cursor_left", "Left", show=False),
+        Binding("l", "cursor_right", "Right", show=False),
+        Binding("k", "cursor_up", "Up", show=False),
+        Binding("j", "cursor_down", "Down", show=False),
+        Binding("0", "cursor_line_start", "Line start", show=False),
+        Binding("dollar_sign", "cursor_line_end", "Line end", show=False),
+        Binding("circumflex_accent", "cursor_first_nonblank", "First non-blank", show=False),
+        Binding("w", "cursor_word_forward", "Word →", show=False),
+        Binding("b", "cursor_word_back", "Word ←", show=False),
+        Binding("e", "cursor_word_end", "Word end", show=False),
+        Binding("g", "cursor_first", "Top", show=False),
+        Binding("G", "cursor_last", "Bottom", show=False),
+        Binding("left_square_bracket", "cursor_entry_start", "Entry top", show=False),
+        Binding("right_square_bracket", "cursor_entry_end", "Entry bottom", show=False),
+        Binding("v", "visual", "Visual", show=False),
+        Binding("V", "visual_line", "Visual line", show=False),
+        Binding("y", "yank", "Yank", show=False),
+        Binding("asterisk", "search_selection", "Search selection", show=False),
+        Binding("n", "search_next", "Search next", show=False),
+        Binding("N", "search_previous", "Search prev", show=False),
+        Binding("ctrl+e", "cursor_scroll_line_down", "Scroll line down", show=False),
+        Binding("ctrl+y", "cursor_scroll_line_up", "Scroll line up", show=False),
+        Binding("ctrl+d", "cursor_scroll_half_page_down", "Half page down", show=False),
+        Binding("ctrl+u", "cursor_scroll_half_page_up", "Half page up", show=False),
+        Binding("ctrl+f", "cursor_scroll_page_down", "Page down", show=False),
+        Binding("ctrl+b", "cursor_scroll_page_up", "Page up", show=False),
+        Binding("escape", "cursor_cancel", "Cancel selection", show=False),
     ]
 
     class Selected(Message):
@@ -239,22 +243,6 @@ class FlowView(ScrollView, Generic[T]):
         def control(self) -> FlowView[Any]:
             return self.flow_view
 
-    class CopyModeChanged(Message):
-        """Posted when copy mode is entered or left (``copy_mode`` is the new
-        state). Entry is consumer-initiated, but exit is often ``Esc`` inside the
-        widget — handle this to keep app chrome (status line, conflicting keys) in
-        sync without polling.
-        """
-
-        def __init__(self, flow_view: FlowView[Any], copy_mode: bool) -> None:
-            self.flow_view = flow_view
-            self.copy_mode = copy_mode
-            super().__init__()
-
-        @property
-        def control(self) -> FlowView[Any]:
-            return self.flow_view
-
     def __init__(
         self,
         *,
@@ -265,8 +253,8 @@ class FlowView(ScrollView, Generic[T]):
         right_decorator: FlowDecorator[T] | None = None,
         right_gutter_width: int | None = None,
         selectable: bool = False,
-        copy_mode: bool = False,
-        copy_scrolloff: int = 0,
+        cursor: bool = False,
+        cursor_scrolloff: int = 0,
         clipboard: Callable[[str], bool | None] | None = None,
         sticky_header: Callable[[Entry[T]], bool] | None = None,
         anchor: Anchor = Anchor.CURRENT,
@@ -366,27 +354,27 @@ class FlowView(ScrollView, Generic[T]):
         # through to scrolling and enter/space bubble (see check_action).
         self._interactive = selectable
         self._current: Entry[T] | None = None
-        # Text/copy cursor mode (vim-like): a character cursor over the rendered
-        # content, drawn via the widget's own text selection. Entered at runtime
-        # (enter_copy_mode); the motion keys are default bindings gated on it.
-        # `copy_mode=True` starts in it on mount, for a copy-cursor-first widget
-        # with no toggle — the consumer picks the interaction model.
-        self._copy_mode = False
-        self._start_in_copy_mode = copy_mode
+        # Text cursor (vim-like): a character cursor over the rendered content,
+        # drawn via the widget's own text selection. Movement keys are always
+        # live; `c` toggles whether the cursor is *shown* (`cursor=True` shows it
+        # on mount). It is synced with the entry cursor (`current`) — moving it
+        # moves the highlight — except while a visual selection is active, when
+        # the anchor (and highlight) is frozen so content stays put mid-select.
+        self._cursor_visible = cursor
         self._tc_row = 0
         self._tc_col = 0
-        self._tc_anchor: tuple[int, int] | None = None  # visual-mode start (row, col)
+        self._tc_anchor: tuple[int, int] | None = None  # visual anchor (row, col); None = none
         self._tc_line_visual = False
-        self._tc_pending = ""  # multi-key prefix in copy-mode ("g" or "z")
+        self._tc_pending = ""  # multi-key prefix ("z")
         # The cursor is anchored to (entry, row-within-entry) so it rides content
         # changes (insert/remove/reflow) instead of sliding to a stale abs row.
         self._tc_entry: Entry[T] | None = None
         self._tc_local = 0
-        self._copy_query = ""  # last copy-mode text search
-        # Rows of context kept above/below the copy cursor (vim `scrolloff`); the
+        self._search_query = ""  # last text search
+        # Rows of context kept above/below the text cursor (vim `scrolloff`); the
         # view scrolls early to preserve it. Capped at half the viewport, so a
         # large value (e.g. 999) pins the cursor to the centre.
-        self._copy_scrolloff = max(0, copy_scrolloff)
+        self._cursor_scrolloff = max(0, cursor_scrolloff)
         self._clipboard = clipboard
         # Per-entry visibility observers: acquire/release a user resource as the
         # entry enters/leaves the viewport (the general lifecycle hook).
@@ -410,8 +398,9 @@ class FlowView(ScrollView, Generic[T]):
         self._viewport.set_entries(self._visible_entries())
         self._refresh_layout(None)
         self._present_visible()
-        if self._start_in_copy_mode:
-            self.enter_copy_mode()
+        if self._cursor_visible:
+            self._tc_row = int(self.scroll_offset.y)
+            self._render_cursor()
         if self._animation_fps > 0:
             # FlowView owns the animation clock (not the app): re-derive gutters
             # at this frame rate so a time-based decorator animates on its own.
@@ -479,7 +468,7 @@ class FlowView(ScrollView, Generic[T]):
         state = self._capture()
         self._viewport.set_entries(self._visible_entries())
         self._refresh_layout(state)
-        self._reanchor_copy_cursor()
+        self._reanchor_cursor()
 
     def on_flow_insert_many(self, entries: list[Entry[T]], index: int) -> None:
         # One capture/restore + one reflow for the whole batch (repeated single
@@ -488,7 +477,7 @@ class FlowView(ScrollView, Generic[T]):
         state = self._capture()
         self._viewport.set_entries(self._visible_entries())
         self._refresh_layout(state)
-        self._reanchor_copy_cursor()
+        self._reanchor_cursor()
 
     def on_flow_update(self, entry: Entry[T]) -> None:
         # The revision bump already makes the cached presentation a miss.
@@ -502,7 +491,7 @@ class FlowView(ScrollView, Generic[T]):
         state = self._capture()
         self._refresh_layout(state, dirty_entry=entry)
         self._present_entry(entry)
-        self._reanchor_copy_cursor()
+        self._reanchor_cursor()
 
     def on_flow_patch(self, entry: Entry[T], start: int, strips: list[Strip]) -> None:
         # Incremental body update: keep the frozen prefix strips, splice the
@@ -525,7 +514,7 @@ class FlowView(ScrollView, Generic[T]):
             return  # off-screen: cached; reflows lazily when scrolled in
         state = self._capture()
         self._refresh_layout(state, dirty_entry=entry)
-        self._reanchor_copy_cursor()
+        self._reanchor_cursor()
 
     def on_flow_remove(self, entry: Entry[T], index: int) -> None:
         if self._current is entry:
@@ -540,7 +529,7 @@ class FlowView(ScrollView, Generic[T]):
         self._strip_cache.pop(entry.id, None)
         self._viewport.set_entries(self._visible_entries())
         self._refresh_layout(state)
-        self._reanchor_copy_cursor()
+        self._reanchor_cursor()
 
     def on_flow_visibility(self, entry: Entry[T]) -> None:
         # Which entries are visible changed (a group collapsed/expanded). Rebuild
@@ -552,10 +541,12 @@ class FlowView(ScrollView, Generic[T]):
         self._viewport.set_entries(self._visible_entries())
         self._refresh_layout(state)
         self._present_visible()
-        self._reanchor_copy_cursor()
+        self._reanchor_cursor()
 
     def on_flow_clear(self) -> None:
-        self.exit_copy_mode()  # nothing left to navigate
+        self._tc_anchor = None  # cancel any selection; nothing left to navigate
+        self._tc_line_visual = False
+        self._tc_row = self._tc_col = 0
         if self._current is not None:
             self.set_current(None)
         for entry_id in list(self._animations):
@@ -604,7 +595,7 @@ class FlowView(ScrollView, Generic[T]):
     def row_text(self, y: int) -> str:
         """The plain text of content row ``y`` (``""`` for an out-of-range row or
         a spacer gap). The ``x`` of a selection ``Offset`` indexes into this
-        string, so it's the basis for a text/copy-mode cursor built on the
+        string, so it's the basis for a text cursor built on the
         selection API."""
         if self._content_width() <= 0:
             return ""
@@ -612,7 +603,7 @@ class FlowView(ScrollView, Generic[T]):
 
     def entry_at_row(self, y: int) -> Entry[T] | None:
         """The entry that owns content row ``y`` (``None`` for a spacer gap or an
-        out-of-range row). Ties the fine text/copy cursor to an entry — the
+        out-of-range row). Ties the fine text cursor to an entry — the
         *current entry* is ``entry_at_row(text-cursor row)``."""
         located = self._viewport.locate(y)
         return self._viewport.entries[located[0]] if located is not None else None
@@ -734,17 +725,35 @@ class FlowView(ScrollView, Generic[T]):
         if self._current is not None:
             self.post_message(self.Selected(self, self._current))
 
+    # Char-level text-cursor actions: only meaningful when the cursor is engaged
+    # (visible or selecting). Otherwise they bubble to the app so a hidden-cursor
+    # feed doesn't steal h/l/w/y/etc. j/k/g/G stay live (they navigate entries
+    # when the cursor is hidden); ↑/↓ and scrolls stay live too.
+    _TEXT_ONLY_ACTIONS: ClassVar[frozenset[str]] = frozenset({
+        "cursor_left", "cursor_right", "cursor_line_start", "cursor_line_end",
+        "cursor_first_nonblank", "cursor_word_forward", "cursor_word_back",
+        "cursor_word_end", "yank", "search_selection", "search_next",
+        "search_previous",
+    })
+
+    def _text_active(self) -> bool:
+        """Whether the text cursor is engaged — shown, or extending a selection.
+        In that state the vim keys drive the character cursor; otherwise j/k etc.
+        drive the entry cursor."""
+        return self._cursor_visible or self._tc_anchor is not None
+
     def check_action(
         self, action: str, parameters: tuple[object, ...]
     ) -> bool | None:
         # Disable enter/space when not interactive so they bubble to the app.
-        # The arrow/page/home/end actions stay enabled and fall through to
-        # scrolling (below), preserving the default scroll behaviour.
         if action == "activate" and not self._interactive:
             return False
-        # Copy-mode motions are live only while in copy mode; otherwise their
-        # keys bubble to the app untouched.
-        if action.startswith("copy_") and not self._copy_mode:
+        # Char-level cursor keys bubble while the cursor is hidden (nothing to
+        # aim). j/k/g/G stay live and navigate entries instead (see the actions).
+        if action in self._TEXT_ONLY_ACTIONS and not self._text_active():
+            return False
+        # Esc only cancels an active selection; otherwise let it bubble.
+        if action == "cursor_cancel" and self._tc_anchor is None:
             return False
         return True
 
@@ -753,23 +762,26 @@ class FlowView(ScrollView, Generic[T]):
         vr = self._viewport.visible_range()
         return max(1, len(vr.entries) - 1)
 
-    def action_highlight_up(self) -> None:
-        # In copy mode ↑/↓ move by *entry* (the text cursor jumps to the
-        # adjacent entry's first row); the two granularities share one cursor.
-        if self._copy_mode:
-            self.copy_cursor_entry(-1)
-        elif self._interactive:
-            self.move_current(-1)
+    def _entry_nav(self, delta: int) -> None:
+        """Move the entry cursor by ``delta`` (or scroll if not interactive),
+        keeping the hidden text cursor snapped to the current entry's first row."""
+        if self._interactive:
+            self.move_current(delta)
+            if self._current is not None:
+                off = self._viewport.offset_of(self._current)
+                if off is not None:
+                    self._tc_row, self._tc_col = off, 0
+                    self._render_cursor(reveal=False)
         else:
-            self.action_scroll_up()
+            self.scroll_relative(y=delta, animate=False)
+
+    def action_highlight_up(self) -> None:
+        # ↑/↓ move by *entry*. With the cursor engaged the text cursor jumps to
+        # the adjacent entry (one shared cursor); otherwise the entry cursor moves.
+        self.cursor_entry(-1) if self._text_active() else self._entry_nav(-1)
 
     def action_highlight_down(self) -> None:
-        if self._copy_mode:
-            self.copy_cursor_entry(1)
-        elif self._interactive:
-            self.move_current(1)
-        else:
-            self.action_scroll_down()
+        self.cursor_entry(1) if self._text_active() else self._entry_nav(1)
 
     def action_highlight_page_up(self) -> None:
         if self._interactive:
@@ -792,76 +804,66 @@ class FlowView(ScrollView, Generic[T]):
     def action_activate(self) -> None:
         self.activate()
 
-    # -- copy mode (a vim-like text cursor over the content) ---------------
+    # -- text cursor (a vim-like character cursor over the content) --------
 
     @property
-    def copy_mode(self) -> bool:
-        """Whether the text/copy cursor mode is active."""
-        return self._copy_mode
+    def cursor_visible(self) -> bool:
+        """Whether the text cursor is currently shown (toggle with ``c`` /
+        :meth:`toggle_cursor`)."""
+        return self._cursor_visible
 
-    def enter_copy_mode(self) -> None:
-        """Start copy mode: a character cursor you move over the rendered text
-        (the motions below), with a visual selection and yank. Drawn via the
-        widget's own text selection. Bind a key to this — the motion keys are
-        default, overridable bindings that are live only while in copy mode."""
-        if self._copy_mode:
+    def show_cursor(self) -> None:
+        """Show the text cursor. Movement keys were already live; now the cursor
+        block is drawn and the vim char-level keys engage."""
+        self._set_cursor_visible(True)
+
+    def hide_cursor(self) -> None:
+        """Hide the text cursor and cancel any visual selection. Entry navigation
+        (↑/↓, j/k) stays live."""
+        self._set_cursor_visible(False)
+
+    def toggle_cursor(self) -> None:
+        """Toggle the text cursor's visibility (bound to ``c``)."""
+        self._set_cursor_visible(not self._cursor_visible)
+
+    def _set_cursor_visible(self, visible: bool) -> None:
+        if self._cursor_visible == visible:
             return
-        self._copy_mode = True
-        self._sync_scroll()
-        # Start at the highlighted entry if there is one (unified cursor), else
-        # the top of the viewport.
-        start = None
-        if self._current is not None:
-            start = self._viewport.offset_of(self._current)
-        self._tc_row = start if start is not None else int(self.scroll_offset.y)
-        self._tc_row = max(0, min(self._tc_row, self.row_count - 1))
-        self._tc_col = 0
-        self._tc_anchor = None
-        self._tc_line_visual = False
-        self._tc_pending = ""
-        self._render_copy_cursor()
-        self.post_message(self.CopyModeChanged(self, True))
+        self._cursor_visible = visible
+        if not visible:
+            self._tc_anchor = None  # hiding cancels any in-progress selection
+            self._tc_line_visual = False
+            selections = dict(self.screen.selections)
+            if selections.pop(self, None) is not None:
+                self.screen.selections = selections
+            self.refresh()
+        else:
+            self._render_cursor()
 
-    def exit_copy_mode(self) -> None:
-        """Leave copy mode and clear its selection."""
-        if not self._copy_mode:
-            return
-        self._copy_mode = False
-        self._tc_anchor = None
-        self._tc_pending = ""
-        selections = dict(self.screen.selections)
-        if selections.pop(self, None) is not None:
-            self.screen.selections = selections
-        self.refresh()
-        self.post_message(self.CopyModeChanged(self, False))
+    # -- text-cursor motions (public; the real API keys map onto) ----------
 
-    def toggle_copy_mode(self) -> None:
-        self.exit_copy_mode() if self._copy_mode else self.enter_copy_mode()
-
-    # -- copy-mode motions (public; the real API keys map onto) ------------
-
-    def copy_cursor_move(self, d_row: int = 0, d_col: int = 0) -> None:
+    def cursor_move(self, d_row: int = 0, d_col: int = 0) -> None:
         """Move the text cursor by ``d_row`` rows / ``d_col`` columns (clamped)."""
         self._tc_row += d_row
         self._tc_col += d_col
-        self._render_copy_cursor()
+        self._render_cursor()
 
-    def copy_cursor_line_start(self) -> None:
+    def cursor_line_start(self) -> None:
         self._tc_col = 0
-        self._render_copy_cursor()
+        self._render_cursor()
 
-    def copy_cursor_line_end(self) -> None:
+    def cursor_line_end(self) -> None:
         self._tc_col = max(0, len(self.row_text(self._tc_row)) - 1)
-        self._render_copy_cursor()
+        self._render_cursor()
 
-    def copy_cursor_first_nonblank(self) -> None:
+    def cursor_first_nonblank(self) -> None:
         text = self.row_text(self._tc_row)
         self._tc_col = next((i for i, ch in enumerate(text) if not ch.isspace()), 0)
-        self._render_copy_cursor()
+        self._render_cursor()
 
-    def copy_cursor_entry(self, delta: int) -> None:
+    def cursor_entry(self, delta: int) -> None:
         """Jump the text cursor to the first row of the entry ``delta`` entries
-        away (↑/↓ in copy mode). Unifies the entry- and character-level cursor:
+        away (↑/↓). Unifies the entry- and character-level cursor:
         the current entry is always ``entry_at_row(row)``."""
         entries = self._viewport.entries
         if not entries:
@@ -873,9 +875,9 @@ class FlowView(ScrollView, Generic[T]):
         if off is not None:
             self._tc_row = off
             self._tc_col = 0
-            self._render_copy_cursor()
+            self._render_cursor()
 
-    def copy_cursor_entry_start(self) -> None:
+    def cursor_entry_start(self) -> None:
         """Jump to the first row of the entry under the cursor."""
         entry = self.entry_at_row(self._tc_row)
         if entry is None:
@@ -884,9 +886,9 @@ class FlowView(ScrollView, Generic[T]):
         if off is not None:
             self._tc_row = off
             self._tc_col = 0
-            self._render_copy_cursor()
+            self._render_cursor()
 
-    def copy_cursor_entry_end(self) -> None:
+    def cursor_entry_end(self) -> None:
         """Jump to the last row of the entry under the cursor."""
         entry = self.entry_at_row(self._tc_row)
         if entry is None:
@@ -895,15 +897,15 @@ class FlowView(ScrollView, Generic[T]):
         if off is not None:
             self._tc_row = off + max(0, self._viewport.height_of(entry) - 1)
             self._tc_col = 0
-            self._render_copy_cursor()
+            self._render_cursor()
 
-    def copy_cursor_top(self) -> None:
+    def cursor_top(self) -> None:
         self._tc_row = 0
-        self._render_copy_cursor()
+        self._render_cursor()
 
-    def copy_cursor_bottom(self) -> None:
+    def cursor_bottom(self) -> None:
         self._tc_row = self.row_count - 1
-        self._render_copy_cursor()
+        self._render_cursor()
 
     def _word_bounds(self, text: str) -> list[tuple[int, int]]:
         words, i, n = [], 0, len(text)
@@ -917,34 +919,34 @@ class FlowView(ScrollView, Generic[T]):
             words.append((start, i - 1))
         return words
 
-    def copy_cursor_word_forward(self) -> None:
+    def cursor_word_forward(self) -> None:
         words = self._word_bounds(self.row_text(self._tc_row))
         nxt = next((s for s, _ in words if s > self._tc_col), None)
         if nxt is not None:
             self._tc_col = nxt
-        self._render_copy_cursor()
+        self._render_cursor()
 
-    def copy_cursor_word_back(self) -> None:
+    def cursor_word_back(self) -> None:
         words = self._word_bounds(self.row_text(self._tc_row))
         prev = next((s for s, _ in reversed(words) if s < self._tc_col), None)
         if prev is not None:
             self._tc_col = prev
-        self._render_copy_cursor()
+        self._render_cursor()
 
-    def copy_cursor_word_end(self) -> None:
+    def cursor_word_end(self) -> None:
         words = self._word_bounds(self.row_text(self._tc_row))
         nxt = next((e for _, e in words if e > self._tc_col), None)
         if nxt is not None:
             self._tc_col = nxt
-        self._render_copy_cursor()
+        self._render_cursor()
 
-    def copy_visual(self) -> None:
+    def visual(self) -> None:
         """Toggle a character-wise visual selection anchored at the cursor."""
         self._tc_line_visual = False
         self._tc_anchor = None if self._tc_anchor is not None else (self._tc_row, self._tc_col)
-        self._render_copy_cursor()
+        self._render_cursor()
 
-    def copy_visual_line(self) -> None:
+    def visual_line(self) -> None:
         """Toggle a line-wise visual selection anchored at the cursor row."""
         if self._tc_anchor is not None and self._tc_line_visual:
             self._tc_anchor = None
@@ -952,7 +954,7 @@ class FlowView(ScrollView, Generic[T]):
         else:
             self._tc_anchor = (self._tc_row, self._tc_col)
             self._tc_line_visual = True
-        self._render_copy_cursor()
+        self._render_cursor()
 
     def write_clipboard(self, text: str) -> bool:
         """Send ``text`` to the clipboard, returning whether it was written.
@@ -969,16 +971,16 @@ class FlowView(ScrollView, Generic[T]):
         self.app.copy_to_clipboard(text)
         return True
 
-    def copy_yank(self) -> str:
+    def yank(self) -> str:
         """Copy the current selection to the clipboard and return it; clears the
-        visual selection (stays in copy mode). Routes through
+        visual selection. Routes through
         :meth:`write_clipboard` (OSC 52 by default — see its caveats)."""
         text = self.screen.get_selected_text() or ""
         if text:
             self.write_clipboard(text)
         self._tc_anchor = None
         self._tc_line_visual = False
-        self._render_copy_cursor()
+        self._render_cursor()
         return text
 
     def _current_word(self) -> str:
@@ -988,29 +990,29 @@ class FlowView(ScrollView, Generic[T]):
                 return text[start : end + 1]
         return ""
 
-    def copy_search(self, query: str, *, forward: bool = True) -> bool:
+    def search(self, query: str, *, forward: bool = True) -> bool:
         """Search the content for ``query`` and move the cursor to the next
         occurrence (wrapping). Returns whether a match was found; remembers the
-        query for :meth:`copy_search_next` / :meth:`copy_search_previous`."""
+        query for :meth:`search_next` / :meth:`search_previous`."""
         if not query:
             return False
-        self._copy_query = query
-        return self._do_copy_search(query, forward=forward)
+        self._search_query = query
+        return self._do_search(query, forward=forward)
 
-    def copy_search_selection(self) -> bool:
+    def search_selection(self) -> bool:
         """Search for the current visual selection (or, with no selection, the
         word under the cursor) — vim ``*``."""
         query = self.screen.get_selected_text() if self._tc_anchor is not None else ""
         query = (query or self._current_word()).strip("\n")
-        return self.copy_search(query, forward=True)
+        return self.search(query, forward=True)
 
-    def copy_search_next(self) -> bool:
-        return self._do_copy_search(self._copy_query, forward=True)
+    def search_next(self) -> bool:
+        return self._do_search(self._search_query, forward=True)
 
-    def copy_search_previous(self) -> bool:
-        return self._do_copy_search(self._copy_query, forward=False)
+    def search_previous(self) -> bool:
+        return self._do_search(self._search_query, forward=False)
 
-    def _do_copy_search(self, query: str, *, forward: bool) -> bool:
+    def _do_search(self, query: str, *, forward: bool) -> bool:
         n = self.row_count
         if not query or n == 0:
             return False
@@ -1031,82 +1033,98 @@ class FlowView(ScrollView, Generic[T]):
             if c != -1:
                 self._tc_row, self._tc_col = r, c
                 self._tc_anchor = None  # land on the match (like vim search)
-                self._render_copy_cursor()
+                self._render_cursor()
                 return True
         return False
 
-    def copy_scroll_center(self) -> None:
+    def cursor_scroll_center(self) -> None:
         self.scroll_to(y=self._tc_row - self.content_size.height // 2, animate=False)
-        self._render_copy_cursor()
+        self._render_cursor()
 
-    def copy_scroll_top(self) -> None:
+    def cursor_scroll_to_top(self) -> None:
         self.scroll_to(y=self._tc_row, animate=False)
-        self._render_copy_cursor()
+        self._render_cursor()
 
-    def copy_scroll_bottom(self) -> None:
+    def cursor_scroll_to_bottom(self) -> None:
         self.scroll_to(y=self._tc_row - self.content_size.height + 1, animate=False)
-        self._render_copy_cursor()
+        self._render_cursor()
 
     @property
-    def copy_scrolloff(self) -> int:
-        """Rows of context kept above/below the copy cursor before the view
+    def cursor_scrolloff(self) -> int:
+        """Rows of context kept above/below the text cursor before the view
         scrolls (vim ``scrolloff``). Capped at half the viewport, so a large
         value (``999``) keeps the cursor centred while the content scrolls under
         it. Settable at runtime."""
-        return self._copy_scrolloff
+        return self._cursor_scrolloff
 
-    @copy_scrolloff.setter
-    def copy_scrolloff(self, value: int) -> None:
-        self._copy_scrolloff = max(0, value)
-        self._render_copy_cursor()
+    @cursor_scrolloff.setter
+    def cursor_scrolloff(self, value: int) -> None:
+        self._cursor_scrolloff = max(0, value)
+        self._render_cursor()
 
-    def _render_copy_cursor(self, *, reveal: bool = True) -> None:
-        if not self._copy_mode:
-            return
+    def _render_cursor(self, *, reveal: bool = True) -> None:
         rows = max(1, self.row_count)
         self._tc_row = max(0, min(self._tc_row, rows - 1))
         self._tc_col = max(0, min(self._tc_col, max(0, len(self.row_text(self._tc_row)) - 1)))
         row, col = self._tc_row, self._tc_col
+        # Sync the entry highlight to the cursor — UNLESS a visual selection is
+        # active, when the anchor (and highlight) is frozen so the content the
+        # user saw at v/V doesn't shift mid-select (a consumer may mutate an entry
+        # in its Highlighted handler). On exit the anchor clears and the highlight
+        # catches up to the cursor here.
         if self._tc_anchor is None:
-            sel = Selection(Offset(col, row), Offset(col + 1, row))
-        elif self._tc_line_visual:
-            (sy, _), (ey, _) = sorted([self._tc_anchor, (row, col)])
-            sel = Selection(Offset(0, sy), Offset(len(self.row_text(ey)), ey))
-        else:
-            (sy, sx), (ey, ex) = sorted([self._tc_anchor, (row, col)])
-            sel = Selection(Offset(sx, sy), Offset(ex + 1, ey))  # inclusive end cell
-        self.screen.selections = {self: sel}
+            self._sync_highlight_to_cursor()
+        # Draw the text selection only when the cursor is engaged (shown, or
+        # extending a selection). Hidden + no selection = no cursor block.
+        if self._cursor_visible or self._tc_anchor is not None:
+            if self._tc_anchor is None:
+                sel = Selection(Offset(col, row), Offset(col + 1, row))
+            elif self._tc_line_visual:
+                (sy, _), (ey, _) = sorted([self._tc_anchor, (row, col)])
+                sel = Selection(Offset(0, sy), Offset(len(self.row_text(ey)), ey))
+            else:
+                (sy, sx), (ey, ex) = sorted([self._tc_anchor, (row, col)])
+                sel = Selection(Offset(sx, sy), Offset(ex + 1, ey))  # inclusive end
+            self.screen.selections = {self: sel}
         # Anchor to the entry under the cursor + local row, so a later content
-        # change can re-derive the absolute row (see _reanchor_copy_cursor).
+        # change can re-derive the absolute row (see _reanchor_cursor).
         entry = self.entry_at_row(row)
         if entry is not None:
             off = self._viewport.offset_of(entry)
             if off is not None:
                 self._tc_entry = entry
                 self._tc_local = row - off
-        # The entry highlight is **fixed** during copy mode — it is not moved and
-        # no ``Highlighted`` is posted as the text cursor roams. (A consumer may
-        # mutate an entry in its ``Highlighted`` handler; moving the highlight on
-        # every keypress would fire those side effects mid-copy.) Copy mode only
-        # *reads* the highlight — it starts there (see ``enter_copy_mode``).
         if reveal:
             self._reveal_row(row)
 
-    def _reanchor_copy_cursor(self) -> None:
+    def _sync_highlight_to_cursor(self) -> None:
+        """Move the entry highlight to the cursor's entry (posting ``Highlighted``)
+        without scrolling — ``_reveal_row`` handles that. No-op when not
+        interactive or already there."""
+        if not self._interactive:
+            return
+        entry = self.entry_at_row(self._tc_row)
+        if entry is None or entry is self._current or not entry.alive or entry.hidden:
+            return
+        self._current = entry
+        self.refresh()
+        self.post_message(self.Highlighted(self, entry))
+
+    def _reanchor_cursor(self) -> None:
         """After a content change, re-derive the cursor's absolute row from its
         anchored entry + local row so it rides the entry instead of sliding."""
-        if not self._copy_mode:
+        if self._tc_entry is None and not self._text_active():
             return
         entry = self._tc_entry
         if entry is not None and entry.alive and not entry.hidden:
             off = self._viewport.offset_of(entry)
             if off is not None:
                 self._tc_row = off + self._tc_local
-        self._render_copy_cursor(reveal=False)
+        self._render_cursor(reveal=False)
 
     def _scrolloff(self) -> int:
         # Can't keep more context than fits above/below the middle row.
-        return min(self._copy_scrolloff, max(0, (self.content_size.height - 1) // 2))
+        return min(self._cursor_scrolloff, max(0, (self.content_size.height - 1) // 2))
 
     def _reveal_row(self, row: int) -> None:
         top = int(self.scroll_offset.y)
@@ -1117,33 +1135,33 @@ class FlowView(ScrollView, Generic[T]):
         elif row + off > top + height - 1:
             self.scroll_to(y=row + off - height + 1, animate=False)
 
-    def copy_scroll_line_down(self) -> None:
+    def cursor_scroll_line_down(self) -> None:
         """Scroll the view down one row, keeping the cursor on its buffer row
         until ``scrolloff`` forces it along (vim ``Ctrl-E``)."""
         self.scroll_to(y=int(self.scroll_offset.y) + 1, animate=False)
         self._follow_view_with_cursor()
 
-    def copy_scroll_line_up(self) -> None:
+    def cursor_scroll_line_up(self) -> None:
         """Scroll the view up one row (vim ``Ctrl-Y``)."""
         self.scroll_to(y=int(self.scroll_offset.y) - 1, animate=False)
         self._follow_view_with_cursor()
 
-    def copy_scroll_half_page_down(self) -> None:
+    def cursor_scroll_half_page_down(self) -> None:
         """Scroll down half a screen, carrying the cursor with it (vim
         ``Ctrl-D``)."""
         self._scroll_page(self.content_size.height // 2)
 
-    def copy_scroll_half_page_up(self) -> None:
+    def cursor_scroll_half_page_up(self) -> None:
         """Scroll up half a screen, carrying the cursor with it (vim
         ``Ctrl-U``)."""
         self._scroll_page(-(self.content_size.height // 2))
 
-    def copy_scroll_page_down(self) -> None:
+    def cursor_scroll_page_down(self) -> None:
         """Scroll down a full screen, carrying the cursor with it (vim
         ``Ctrl-F``); two rows of overlap are kept for context."""
         self._scroll_page(max(1, self.content_size.height - 2))
 
-    def copy_scroll_page_up(self) -> None:
+    def cursor_scroll_page_up(self) -> None:
         """Scroll up a full screen, carrying the cursor with it (vim
         ``Ctrl-B``); two rows of overlap are kept for context."""
         self._scroll_page(-max(1, self.content_size.height - 2))
@@ -1152,121 +1170,131 @@ class FlowView(ScrollView, Generic[T]):
         # Move view and cursor by the same delta so the cursor keeps its screen
         # row (vim Ctrl-D/U/F/B). At a buffer end the view clamps but the cursor
         # keeps going — it just drifts toward that edge, as vim does. Both the
-        # cursor clamp and a keep-visible reveal happen in _render_copy_cursor.
+        # cursor clamp and a keep-visible reveal happen in _render_cursor.
         self.scroll_to(y=int(self.scroll_offset.y) + delta, animate=False)
         self._tc_row += delta
-        self._render_copy_cursor()
+        self._render_cursor()
 
     def _follow_view_with_cursor(self) -> None:
         top = int(self.scroll_offset.y)
         height = self.content_size.height
         off = self._scrolloff()
         self._tc_row = max(top + off, min(self._tc_row, top + height - 1 - off))
-        self._render_copy_cursor(reveal=False)
+        self._render_cursor(reveal=False)
 
-    # -- copy-mode actions (default, overridable bindings map onto these) --
+    # -- cursor actions (default, overridable bindings map onto these) -----
 
-    def action_copy_left(self) -> None:
-        self.copy_cursor_move(d_col=-1)
+    def action_toggle_cursor(self) -> None:
+        self.toggle_cursor()
 
-    def action_copy_right(self) -> None:
-        self.copy_cursor_move(d_col=1)
+    def action_cursor_left(self) -> None:
+        self.cursor_move(d_col=-1)
 
-    def action_copy_up(self) -> None:
-        self.copy_cursor_move(d_row=-1)
+    def action_cursor_right(self) -> None:
+        self.cursor_move(d_col=1)
 
-    def action_copy_down(self) -> None:
-        self.copy_cursor_move(d_row=1)
+    def action_cursor_up(self) -> None:
+        # j/k move the text cursor by row when engaged, else the entry cursor.
+        self.cursor_move(d_row=-1) if self._text_active() else self._entry_nav(-1)
 
-    def action_copy_line_start(self) -> None:
-        self.copy_cursor_line_start()
+    def action_cursor_down(self) -> None:
+        self.cursor_move(d_row=1) if self._text_active() else self._entry_nav(1)
 
-    def action_copy_line_end(self) -> None:
-        self.copy_cursor_line_end()
+    def action_cursor_first(self) -> None:
+        # g -> first doc row when engaged, else first entry.
+        self.cursor_top() if self._text_active() else self.action_highlight_home()
 
-    def action_copy_first_nonblank(self) -> None:
-        self.copy_cursor_first_nonblank()
+    def action_cursor_last(self) -> None:
+        # G -> last doc row when engaged, else last entry.
+        self.cursor_bottom() if self._text_active() else self.action_highlight_end()
 
-    def action_copy_bottom(self) -> None:
-        self.copy_cursor_bottom()
+    def action_cursor_line_start(self) -> None:
+        self.cursor_line_start()
 
-    def action_copy_entry_start(self) -> None:
-        self.copy_cursor_entry_start()
+    def action_cursor_line_end(self) -> None:
+        self.cursor_line_end()
 
-    def action_copy_entry_end(self) -> None:
-        self.copy_cursor_entry_end()
+    def action_cursor_first_nonblank(self) -> None:
+        self.cursor_first_nonblank()
 
-    def action_copy_search_selection(self) -> None:
-        self.copy_search_selection()
+    def action_cursor_entry_start(self) -> None:
+        self.cursor_entry_start()
 
-    def action_copy_search_next(self) -> None:
-        self.copy_search_next()
+    def action_cursor_entry_end(self) -> None:
+        self.cursor_entry_end()
 
-    def action_copy_search_previous(self) -> None:
-        self.copy_search_previous()
+    def action_search_selection(self) -> None:
+        self.search_selection()
 
-    def action_copy_word_forward(self) -> None:
-        self.copy_cursor_word_forward()
+    def action_search_next(self) -> None:
+        self.search_next()
 
-    def action_copy_word_back(self) -> None:
-        self.copy_cursor_word_back()
+    def action_search_previous(self) -> None:
+        self.search_previous()
 
-    def action_copy_word_end(self) -> None:
-        self.copy_cursor_word_end()
+    def action_cursor_word_forward(self) -> None:
+        self.cursor_word_forward()
 
-    def action_copy_visual(self) -> None:
-        self.copy_visual()
+    def action_cursor_word_back(self) -> None:
+        self.cursor_word_back()
 
-    def action_copy_visual_line(self) -> None:
-        self.copy_visual_line()
+    def action_cursor_word_end(self) -> None:
+        self.cursor_word_end()
 
-    def action_copy_yank(self) -> None:
-        self.copy_yank()
+    def action_visual(self) -> None:
+        self.visual()
 
-    def action_copy_scroll_line_down(self) -> None:
-        self.copy_scroll_line_down()
+    def action_visual_line(self) -> None:
+        self.visual_line()
 
-    def action_copy_scroll_line_up(self) -> None:
-        self.copy_scroll_line_up()
+    def action_yank(self) -> None:
+        self.yank()
 
-    def action_copy_scroll_half_page_down(self) -> None:
-        self.copy_scroll_half_page_down()
+    def action_cursor_scroll_line_down(self) -> None:
+        self.cursor_scroll_line_down()
 
-    def action_copy_scroll_half_page_up(self) -> None:
-        self.copy_scroll_half_page_up()
+    def action_cursor_scroll_line_up(self) -> None:
+        self.cursor_scroll_line_up()
 
-    def action_copy_scroll_page_down(self) -> None:
-        self.copy_scroll_page_down()
+    def action_cursor_scroll_half_page_down(self) -> None:
+        self.cursor_scroll_half_page_down()
 
-    def action_copy_scroll_page_up(self) -> None:
-        self.copy_scroll_page_up()
+    def action_cursor_scroll_half_page_up(self) -> None:
+        self.cursor_scroll_half_page_up()
 
-    def action_copy_exit(self) -> None:
-        self.exit_copy_mode()
+    def action_cursor_scroll_page_down(self) -> None:
+        self.cursor_scroll_page_down()
+
+    def action_cursor_scroll_page_up(self) -> None:
+        self.cursor_scroll_page_up()
+
+    def action_cursor_cancel(self) -> None:
+        """Cancel an active visual selection (Esc). The highlight then catches up
+        to the cursor via ``_render_cursor``."""
+        if self._tc_anchor is None:
+            return
+        self._tc_anchor = None
+        self._tc_line_visual = False
+        self._render_cursor()
 
     def on_key(self, event: events.Key) -> None:
-        # Two-key vim prefixes (gg, zz/zt/zb) while in copy mode. Single-key
-        # motions stay as normal, overridable BINDINGS.
-        if not self._copy_mode:
+        # Two-key vim prefix zz/zt/zb (position the cursor within the viewport),
+        # live only when the cursor is engaged. `g`/`G` are single-key bindings;
+        # other motions are normal, overridable BINDINGS.
+        if not self._text_active():
             return
         pending, self._tc_pending = self._tc_pending, ""
-        if pending == "g":
-            if event.key == "g":
-                self.copy_cursor_top()
-                event.stop()
-                event.prevent_default()
-            return
         if pending == "z":
             if event.key == "z":
-                self.copy_scroll_center()
+                self.cursor_scroll_center()
             elif event.key == "t":
-                self.copy_scroll_top()
+                self.cursor_scroll_to_top()
             elif event.key == "b":
-                self.copy_scroll_bottom()
+                self.cursor_scroll_to_bottom()
             event.stop()
             event.prevent_default()
             return
-        if event.key in ("g", "z"):
+        if event.key == "z":
             self._tc_pending = event.key
             event.stop()
             event.prevent_default()
@@ -1675,7 +1703,7 @@ class FlowView(ScrollView, Generic[T]):
         # The selection lives in the **body** columns only — the gutter is
         # decoration, not selectable text (like a scrollbar). Offsets are stamped
         # body-relative and the gutter cells carry none, so neither a mouse drag
-        # nor copy mode can address them, and a yank never carries gutter glyphs.
+        # nor the text cursor can address them, and a yank never carries gutter glyphs.
         body_start = min(self._left_gutter_w(), width)
         body_end = max(body_start, width - self._right_gutter_w())
         selection = self.text_selection

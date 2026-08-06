@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-08-07
+
+### Changed
+
+- **Replaced "copy mode" with an always-available text cursor + visual mode.**
+  There is no mode to enter/leave anymore. The vim movement keys are always
+  live, `c` shows/hides the cursor block, and **visual mode** (`v`/`V` … `y`) is
+  the only real mode. Rationale: the copy-mode on/off was a key-capture *gate*,
+  not a real mode — the genuine "same key, two meanings" state is the visual
+  selection (`v`), driven by the anchor.
+  - **Two zoom levels, one cursor:** while the cursor is hidden, `j`/`k` (and
+    `↑`/`↓`) move the **entry** cursor (`current`); with the cursor shown they
+    move it at the **character/row** level. The text cursor is now **synced**
+    with the entry highlight (moving it moves `current` and posts `Highlighted`)
+    — except during a visual selection, when the anchor and highlight are frozen
+    so content doesn't shift mid-select; on exit the highlight catches up to the
+    cursor.
+  - Char-level keys (`h`/`l`/`w`/`y`/…) **bubble to the app while the cursor is
+    hidden**, so a plain feed doesn't steal them; `j`/`k` stay live.
+  - `gg` → **`g`** (single key) to jump to the top.
+
+### Removed
+
+- `enter_copy_mode()` / `exit_copy_mode()` / `toggle_copy_mode()` / `copy_mode`
+  and the `copy_mode=` flag → use `show_cursor()` / `hide_cursor()` /
+  `toggle_cursor()` / `cursor_visible` and the `cursor=` constructor flag (`c`
+  by default).
+- `FlowView.CopyModeChanged` message.
+- The `copy_` method prefix: `copy_cursor_move` → `cursor_move`, `copy_visual` →
+  `visual`, `copy_yank` → `yank`, `copy_search*` → `search*`, `copy_scroll_*` →
+  `cursor_scroll_*`, `copy_scrolloff` → `cursor_scrolloff`, etc.
+
 ## [0.12.0] - 2026-08-02
 
 ### Removed
