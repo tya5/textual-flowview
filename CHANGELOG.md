@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-08-07
+
+### Fixed
+
+- `show_cursor()` / `toggle_cursor()` no longer move `current` (#11). Revealing
+  the cursor is visibility-only. The regression: the cursor↔highlight sync only
+  ran one way (cursor → highlight), so revealing dragged `current` to a stale
+  `_tc_row` — landing on entry 0 when `current` had been moved by anything other
+  than a keypress (streaming, `set_current`, a click). Now the text cursor is
+  kept riding `current` at the mutation site (`set_current`), so reveal — and a
+  relative move issued while the cursor is hidden — starts from where `current`
+  is; a content-change reanchor never moves `current`.
+
 ## [0.13.0] - 2026-08-07
 
 ### Changed

@@ -688,10 +688,11 @@ class FlowView(ScrollView, Generic[T]):
         if entry is not None:
             self.ensure_visible(entry)
             # Keep the (possibly hidden) text cursor riding `current`, so
-            # revealing it later doesn't yank `current` back to a stale row.
-            # Skip during a visual selection (the anchor owns the cursor) and
-            # for the text-cursor's own moves, which set `_current` directly via
-            # `_sync_highlight_to_cursor` and never reach this method.
+            # revealing it — or a relative move issued while hidden — starts from
+            # where `current` is, not a stale row. The text cursor's *own* moves
+            # set `_current` directly (via `_sync_highlight_to_cursor`) and never
+            # reach here, so this doesn't clobber a within-entry position. Frozen
+            # during a visual selection (the anchor owns the cursor).
             if self._tc_anchor is None:
                 off = self._viewport.offset_of(entry)
                 if off is not None:
@@ -843,25 +844,12 @@ class FlowView(ScrollView, Generic[T]):
                 self.screen.selections = selections
             self.refresh()
         else:
-            # Revealing SYNCS the cursor to the highlight, which is the
-            # invariant 0.13 states ("The text cursor is now SYNCED with the
-            # entry highlight"). Without this the sync only ever ran the other
-            # way — cursor -> highlight — so showing the cursor dragged the
-            # highlight to wherever ``_tc_row`` happened to be. After a move
-            # that was not a key press (content arriving, a click, a scroll)
-            # ``_tc_row`` still held its old value, and a reader on the last
-            # entry found the highlight jumping to the top of the log.
-            #
-            # Keys are unaffected: they already keep the two in step while the
-            # cursor is hidden, so a reader who moved with j/k still finds the
-            # cursor exactly where they left it.
-            current = self._current
-            if current is not None:
-                off = self._viewport.offset_of(current)
-                if off is not None:
-                    self._tc_row = off
-                    self._tc_col = 0
-            self._render_cursor()
+            # Revealing is visibility-only: the text cursor already rides
+            # `current` (kept in step by `set_current` / the cursor's own moves),
+            # so drawing it must NOT drag `current` — hence sync=False. This is
+            # the #11 fix: a reader on the last entry pressing `c` finds the
+            # cursor there, not jumped to the top of the log.
+            self._render_cursor(sync=False)
 
     # -- text-cursor motions (public; the real API keys map onto) ----------
 
@@ -1144,7 +1132,8 @@ class FlowView(ScrollView, Generic[T]):
             off = self._viewport.offset_of(entry)
             if off is not None:
                 self._tc_row = off + self._tc_local
-        self._render_cursor(reveal=False)
+        # A content change repositions the cursor but must not move `current`.
+        self._render_cursor(reveal=False, sync=False)
 
     def _scrolloff(self) -> int:
         # Can't keep more context than fits above/below the middle row.

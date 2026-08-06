@@ -486,7 +486,7 @@ async def test_revealing_the_cursor_syncs_it_to_the_highlight() -> None:
     highlight sits after content arrives, and it is where a reader is when
     they press the key that reveals the cursor.
     """
-    app = CopyApp([f"entry {i}" for i in range(9)])
+    app = CopyApp([f"entry {i}" for i in range(9)], selectable=True)
     async with app.run_test(size=(40, 8)) as pilot:
         await pilot.pause()
         await pilot.pause()
