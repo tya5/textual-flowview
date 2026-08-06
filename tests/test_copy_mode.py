@@ -146,6 +146,48 @@ async def test_hidden_jk_navigate_entries_c_toggles_cursor() -> None:
 
 
 @pytest.mark.asyncio
+async def test_show_cursor_does_not_move_current() -> None:
+    # #11: revealing the cursor is visibility-only. The text cursor rides
+    # `current` even when it was moved by set_current/click (not just keys), so
+    # show_cursor never yanks `current` back to a stale row.
+    app = CopyApp([f"row {i}" for i in range(9)], selectable=True)
+    async with app.run_test(size=(30, 12)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        v.focus()
+        es = list(app.model)
+        for idx in (8, 5, 2):  # incl. the last entry (the reported trigger)
+            v.set_current(es[idx])
+            await pilot.pause()
+            before = v.current
+            v.show_cursor()
+            await pilot.pause()
+            assert v.current is before is es[idx]  # unmoved
+            assert v.entry_at_row(v._tc_row) is es[idx]  # cursor sits on it
+            v.hide_cursor()
+            await pilot.pause()
+
+
+@pytest.mark.asyncio
+async def test_cursor_entry_relative_move_while_hidden() -> None:
+    # #11 (secondary): a relative move issued before showing the cursor takes
+    # effect from `current`, not from a stale row 0.
+    app = CopyApp([f"row {i}" for i in range(9)], selectable=True)
+    async with app.run_test(size=(30, 12)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        v.focus()
+        es = list(app.model)
+        v.set_current(es[5])
+        await pilot.pause()
+        v.cursor_entry(1)  # relative, cursor hidden
+        await pilot.pause()
+        assert v.current is es[6]
+
+
+@pytest.mark.asyncio
 async def test_cursor_constructor_shows_on_mount() -> None:
     app = CopyApp([f"row {i}" for i in range(20)], cursor=True)
     async with app.run_test(size=(30, 10)) as pilot:
@@ -428,3 +470,66 @@ async def test_selection_excludes_gutter() -> None:
         assert v.row_text(0)[v._tc_col] == "n"         # starts at the body
         await pilot.press("v", "j", "l", "l", "l")     # multi-row selection
         assert v.yank() == "newest reply body\nseco"   # no gutter on any row
+
+
+@pytest.mark.asyncio
+async def test_revealing_the_cursor_syncs_it_to_the_highlight() -> None:
+    """Showing the cursor must not move the highlight.
+
+    0.13 states the invariant in its own commit message — "The text cursor is
+    now SYNCED with the entry highlight" — but the sync only ran one way,
+    cursor -> highlight. So revealing the cursor dragged the highlight to
+    wherever ``_tc_row`` was left, which after any move that was not a key
+    press is the old position.
+
+    The last entry is the case that showed it, because that is where the
+    highlight sits after content arrives, and it is where a reader is when
+    they press the key that reveals the cursor.
+    """
+    app = CopyApp([f"entry {i}" for i in range(9)])
+    async with app.run_test(size=(40, 8)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        v.focus()
+        assert not v.cursor_visible, "setup: this test starts with the cursor hidden"
+
+        entries = list(v.entries)
+        v.set_current(entries[-1])
+        await pilot.pause()
+        assert v.current is entries[-1], "setup: the highlight is on the last entry"
+
+        v.show_cursor()
+        await pilot.pause()
+
+        assert v.current is entries[-1], (
+            "revealing the cursor moved the highlight off the entry it was on"
+        )
+
+
+@pytest.mark.asyncio
+async def test_revealing_the_cursor_leaves_a_keyboard_position_alone() -> None:
+    """The keys already keep the two in step, and that must not regress.
+
+    They update the cursor row even while it is hidden, so a reader who moved
+    with j/k finds the cursor exactly where they left it. The sync added for
+    the case above must not overwrite that.
+    """
+    app = CopyApp([f"entry {i}" for i in range(9)])
+    async with app.run_test(size=(40, 8)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        v.focus()
+
+        await pilot.press("k", "k")
+        moved_to = v.current
+        await pilot.pause()
+
+        v.show_cursor()
+        await pilot.pause()
+
+        assert v.current is moved_to, (
+            "revealing the cursor moved the highlight away from where the keys "
+            "had put it"
+        )

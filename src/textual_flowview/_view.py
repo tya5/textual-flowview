@@ -687,6 +687,16 @@ class FlowView(ScrollView, Generic[T]):
         self._current = entry
         if entry is not None:
             self.ensure_visible(entry)
+            # Keep the (possibly hidden) text cursor riding `current`, so
+            # revealing it later doesn't yank `current` back to a stale row.
+            # Skip during a visual selection (the anchor owns the cursor) and
+            # for the text-cursor's own moves, which set `_current` directly via
+            # `_sync_highlight_to_cursor` and never reach this method.
+            if self._tc_anchor is None:
+                off = self._viewport.offset_of(entry)
+                if off is not None:
+                    self._tc_row, self._tc_col = off, 0
+                    self._tc_entry, self._tc_local = entry, 0
         self.refresh()
         self.post_message(self.Highlighted(self, entry))
 
@@ -763,15 +773,10 @@ class FlowView(ScrollView, Generic[T]):
         return max(1, len(vr.entries) - 1)
 
     def _entry_nav(self, delta: int) -> None:
-        """Move the entry cursor by ``delta`` (or scroll if not interactive),
-        keeping the hidden text cursor snapped to the current entry's first row."""
+        """Move the entry cursor by ``delta`` (or scroll if not interactive). The
+        hidden text cursor rides `current` automatically (see :meth:`set_current`)."""
         if self._interactive:
             self.move_current(delta)
-            if self._current is not None:
-                off = self._viewport.offset_of(self._current)
-                if off is not None:
-                    self._tc_row, self._tc_col = off, 0
-                    self._render_cursor(reveal=False)
         else:
             self.scroll_relative(y=delta, animate=False)
 
@@ -838,6 +843,24 @@ class FlowView(ScrollView, Generic[T]):
                 self.screen.selections = selections
             self.refresh()
         else:
+            # Revealing SYNCS the cursor to the highlight, which is the
+            # invariant 0.13 states ("The text cursor is now SYNCED with the
+            # entry highlight"). Without this the sync only ever ran the other
+            # way — cursor -> highlight — so showing the cursor dragged the
+            # highlight to wherever ``_tc_row`` happened to be. After a move
+            # that was not a key press (content arriving, a click, a scroll)
+            # ``_tc_row`` still held its old value, and a reader on the last
+            # entry found the highlight jumping to the top of the log.
+            #
+            # Keys are unaffected: they already keep the two in step while the
+            # cursor is hidden, so a reader who moved with j/k still finds the
+            # cursor exactly where they left it.
+            current = self._current
+            if current is not None:
+                off = self._viewport.offset_of(current)
+                if off is not None:
+                    self._tc_row = off
+                    self._tc_col = 0
             self._render_cursor()
 
     # -- text-cursor motions (public; the real API keys map onto) ----------
@@ -1062,17 +1085,18 @@ class FlowView(ScrollView, Generic[T]):
         self._cursor_scrolloff = max(0, value)
         self._render_cursor()
 
-    def _render_cursor(self, *, reveal: bool = True) -> None:
+    def _render_cursor(self, *, reveal: bool = True, sync: bool = True) -> None:
         rows = max(1, self.row_count)
         self._tc_row = max(0, min(self._tc_row, rows - 1))
         self._tc_col = max(0, min(self._tc_col, max(0, len(self.row_text(self._tc_row)) - 1)))
         row, col = self._tc_row, self._tc_col
-        # Sync the entry highlight to the cursor — UNLESS a visual selection is
-        # active, when the anchor (and highlight) is frozen so the content the
-        # user saw at v/V doesn't shift mid-select (a consumer may mutate an entry
-        # in its Highlighted handler). On exit the anchor clears and the highlight
-        # catches up to the cursor here.
-        if self._tc_anchor is None:
+        # Sync the entry highlight to the cursor — but only on a cursor *motion*
+        # (``sync``), never on a reveal or a content-change reanchor (which would
+        # drag `current`, e.g. resurrect one just cleared by a hide). And not
+        # during a visual selection, when the anchor (and highlight) is frozen so
+        # the content seen at v/V doesn't shift mid-select; on exit the anchor
+        # clears and the highlight catches up to the cursor here.
+        if sync and self._tc_anchor is None:
             self._sync_highlight_to_cursor()
         # Draw the text selection only when the cursor is engaged (shown, or
         # extending a selection). Hidden + no selection = no cursor block.
