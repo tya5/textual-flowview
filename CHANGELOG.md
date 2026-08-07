@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.2] - 2026-08-08
+
+### Added
+
+- `examples/image.py` — images in the feed, composed with text in a single entry
+  (avatar beside a message via `Table.grid`, an inline picture with a caption via
+  `Group`). On Kitty / WezTerm they're **real pixels** via
+  [textual-image](https://github.com/lnqs/textual-image)'s renderable (Kitty
+  graphics protocol, Unicode-placeholder mode — cell-based, so it virtualizes and
+  clips correctly while scrolling); other terminals fall back to a half-block
+  approximation. No core change — an image is just a `RenderableType` in a
+  `Presentation`; textual-image is an example-only dependency.
+
 ## [0.15.1] - 2026-08-08
 
 ### Documentation

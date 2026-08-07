@@ -573,6 +573,14 @@ a `Static` can't auto-measure — a `rich.progress_bar.ProgressBar` is the class
 one, it collapses to zero rows in a bare `Static` — just work in a `FlowView`.
 You tell FlowView the height; there's no per-widget `styles.height` to remember.
 
+**Images** are just renderables too, so they compose with text in one entry
+(`Group` to stack, `Table.grid` / `Columns` for an avatar beside a message). On
+Kitty / WezTerm they're **real pixels** — [textual-image](https://github.com/lnqs/textual-image)'s
+renderable uses the Kitty graphics protocol in *Unicode-placeholder* mode, which
+is cell-based, so it virtualizes and clips correctly as the feed scrolls; other
+terminals fall back to a half-block approximation automatically. See
+[`examples/image.py`](examples/image.py) (avatars + text, an inline picture).
+
 FlowView caches an entry's render, so animation needs a clock. There is **one
 animation primitive** — `animate_entry` — and the callback decides *what* to
 re-render, so the gutter and the body animate the same way:
@@ -857,6 +865,7 @@ PYTHONPATH=src python examples/infinite.py        # infinite scroll: lazy-load o
 PYTHONPATH=src python examples/progress.py        # Rich Spinner + ProgressBar in entries
 PYTHONPATH=src python examples/minimap.py         # minimap replacing the scrollbar
 PYTHONPATH=src python examples/chat.py            # streaming chat
+PYTHONPATH=src python examples/image.py           # images + text in the feed (needs: pip install textual-image pillow; real pixels on Kitty)
 PYTHONPATH=src python examples/screensaver.py     # idle viewport overlay (needs: pip install terminaltexteffects)
 PYTHONPATH=src python examples/compare.py         # live FPS: VerticalScroll vs FlowView
 PYTHONPATH=src python examples/benchmark.py       # prints the benchmark table above
