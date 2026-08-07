@@ -640,10 +640,34 @@ low-level hook is the `flow.overlay` property (assign a renderable to paint,
 
 FlowView owns *painting the viewport*; the effect, and any trigger policy (idle
 → screensaver, an intro, a transition), are yours — nothing here knows about
-"screensavers". It's renderable-agnostic: for a
-[TerminalTextEffects](https://github.com/ChrisBuilds/terminaltexteffects) effect,
-convert each frame with `Text.from_ansi(frame)`. See `examples/screensaver.py`
-(idle-triggered, random TTE effect, dismiss on any key).
+"screensavers".
+
+**Renderable-agnostic — no effect library dependency.** FlowView's only runtime
+dependency is `textual`; it never imports an effects library and speaks only in
+Rich renderables. To use
+[TerminalTextEffects](https://github.com/ChrisBuilds/terminaltexteffects) you
+install it yourself and bridge each frame (an ANSI string) with
+`Text.from_ansi` — the whole adapter is a few lines:
+
+```python
+# pip install terminaltexteffects   (yours to add — not pulled in by flowview)
+from rich.text import Text
+from terminaltexteffects.effects.effect_beams import Beams
+
+def frames(width, height):
+    effect = Beams("hello")
+    effect.terminal_config.canvas_width = width
+    effect.terminal_config.canvas_height = height
+    return (Text.from_ansi(f) for f in effect)   # ← the whole bridge
+
+flow.play_overlay(frames, fps=30, loop=True)
+```
+
+This is deliberate: bundling TTE (or wrapping its API in a helper here) would
+couple FlowView to a specific effects library and burden consumers who don't use
+one. The seam is `frames → RenderableType`, so any ANSI/Rich frame source works.
+See `examples/screensaver.py` (idle-triggered, random TTE effect, dismiss on any
+key).
 
 ### Viewport-scoped resources (the general hook)
 
