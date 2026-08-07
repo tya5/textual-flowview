@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-08-08
+
+### Documentation
+
+- Spell out that the viewport-overlay API is **effect-library-agnostic**:
+  FlowView's only runtime dependency is `textual` and it never imports an effects
+  library — consumers install TerminalTextEffects (or any source) themselves and
+  bridge each frame with `Text.from_ansi`, shown inline, with the rationale for
+  not bundling it.
+- Inline `examples/*.py` references in the README are now clickable links, so
+  each feature section leads straight to its example.
+
 ## [0.15.0] - 2026-08-08
 
 ### Added
