@@ -352,7 +352,24 @@ FlowView(model=..., presenter=..., anchor=Anchor.STICKY_BOTTOM)    # chat / log
 
 `STICKY_BOTTOM` follows new items **only while the user is already at the
 bottom** — scrolling up to read history stops the auto-follow (Slack / Discord
-/ Claude Code behaviour).
+/ Claude Code behaviour). A scroll-up **during early streaming** counts too:
+even before there's room to move (content still fits, `max_scroll_y == 0`), the
+gesture is the reader's signal to stop following, so new content won't yank them
+back to the tail.
+
+**Reading the follow state.** `flow.following` is `True` while the view is
+auto-following its sticky edge (the tail for `STICKY_BOTTOM`, the head for
+`STICKY_TOP`), `False` once the reader scrolls away, and `False` for a non-sticky
+anchor. It flips post `FollowChanged` (`event.following` is the new state) —
+handle that instead of inferring "has the reader left the tail?" from
+`max_scroll_y` / `scroll_offset`, which can't tell "parked at the bottom,
+following" from "scrolled up during early streaming".
+
+```python
+class MyApp(App):
+    def on_flow_view_follow_changed(self, event: FlowView.FollowChanged) -> None:
+        self.at_tail = event.following
+```
 
 For a **newest-on-top** feed, prepend with `model.insert(0, item)` and use
 `Anchor.STICKY_TOP` — the mirror of `STICKY_BOTTOM`: it stays pinned to the top

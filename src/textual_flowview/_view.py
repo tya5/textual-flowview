@@ -227,6 +227,24 @@ class FlowView(ScrollView, Generic[T]):
         def control(self) -> FlowView[Any]:
             return self.flow_view
 
+    class FollowChanged(Message):
+        """Posted when the view starts or stops **auto-following** its sticky edge
+        (``following`` is the new state). For ``STICKY_BOTTOM`` this is the tail:
+        the reader scrolling away from it releases the follow, scrolling back
+        re-engages it. Handle this instead of inferring follow state from
+        ``max_scroll_y`` / ``scroll_offset`` — those don't distinguish "parked at
+        the bottom, following" from "scrolled up during early streaming".
+        """
+
+        def __init__(self, flow_view: FlowView[Any], following: bool) -> None:
+            self.flow_view = flow_view
+            self.following = following
+            super().__init__()
+
+        @property
+        def control(self) -> FlowView[Any]:
+            return self.flow_view
+
     class Highlighted(Message):
         """Posted when the current entry **moves** — the cursor browsing across
         entries by keyboard or mouse (``selectable=True``). Fires
@@ -432,12 +450,81 @@ class FlowView(ScrollView, Generic[T]):
             self._scroll_dir = -1
         if self._viewport.anchor is Anchor.STICKY_BOTTOM:
             # Follow only while parked at the bottom; scrolling up releases it.
-            self._follow_bottom = int(new_value) >= self.max_scroll_y
+            self._update_following(int(new_value) >= self.max_scroll_y)
         elif self._viewport.anchor is Anchor.STICKY_TOP:
             # Follow only while parked at the top; scrolling down releases it.
-            self._follow_top = int(new_value) <= 0
+            self._update_following(int(new_value) <= 0)
         self._present_visible()
         self._check_edges()
+
+    @property
+    def following(self) -> bool:
+        """Whether the view is **auto-following** its sticky edge — the tail for
+        ``STICKY_BOTTOM``, the head for ``STICKY_TOP`` — so new content keeps it
+        pinned there. A reader scrolling away releases it (even a wheel-up during
+        early streaming with no room to move); scrolling back re-engages it.
+        Always ``False`` for a non-sticky anchor. Changes post :class:`FollowChanged`."""
+        if self._viewport.anchor is Anchor.STICKY_BOTTOM:
+            return self._follow_bottom
+        if self._viewport.anchor is Anchor.STICKY_TOP:
+            return self._follow_top
+        return False
+
+    def _update_following(self, value: bool) -> None:
+        """Set the active sticky-edge follow flag, posting :class:`FollowChanged`
+        on a flip. A no-op for a non-sticky anchor."""
+        anchor = self._viewport.anchor
+        if anchor is Anchor.STICKY_BOTTOM:
+            if self._follow_bottom != value:
+                self._follow_bottom = value
+                self.post_message(self.FollowChanged(self, value))
+        elif anchor is Anchor.STICKY_TOP:
+            if self._follow_top != value:
+                self._follow_top = value
+                self.post_message(self.FollowChanged(self, value))
+
+    def _reader_scrolled(self, dy: int) -> None:
+        """A reader-initiated scroll (``dy < 0`` up, ``> 0`` down). Releases the
+        sticky-edge follow when moving *away* from that edge — registering the
+        intent even when there's no room to actually move, which ``watch_scroll_y``
+        can't see because the position doesn't change (the #12 case)."""
+        anchor = self._viewport.anchor
+        if (anchor is Anchor.STICKY_BOTTOM and dy < 0) or (
+            anchor is Anchor.STICKY_TOP and dy > 0
+        ):
+            self._update_following(False)
+
+    def _on_mouse_scroll_up(self, event: events.MouseScrollUp) -> None:
+        self._reader_scrolled(-1)
+        super()._on_mouse_scroll_up(event)
+
+    def _on_mouse_scroll_down(self, event: events.MouseScrollDown) -> None:
+        self._reader_scrolled(1)
+        super()._on_mouse_scroll_down(event)
+
+    def action_scroll_up(self) -> None:
+        self._reader_scrolled(-1)
+        super().action_scroll_up()
+
+    def action_scroll_down(self) -> None:
+        self._reader_scrolled(1)
+        super().action_scroll_down()
+
+    def action_page_up(self) -> None:
+        self._reader_scrolled(-1)
+        super().action_page_up()
+
+    def action_page_down(self) -> None:
+        self._reader_scrolled(1)
+        super().action_page_down()
+
+    def action_scroll_home(self) -> None:
+        self._reader_scrolled(-1)
+        super().action_scroll_home()
+
+    def action_scroll_end(self) -> None:
+        self._reader_scrolled(1)
+        super().action_scroll_end()
 
     def _check_edges(self) -> None:
         """Post ReachedTop / ReachedBottom when an edge is within

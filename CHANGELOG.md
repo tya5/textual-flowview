@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-08-07
+
+### Added
+
+- **`FlowView.following` + `FlowView.FollowChanged`** expose sticky-edge follow
+  state (#12). `following` is `True` while the view auto-follows its sticky edge
+  (the tail for `STICKY_BOTTOM`, the head for `STICKY_TOP`); it posts
+  `FollowChanged` on every flip. Handle it instead of inferring "has the reader
+  left the tail?" from `max_scroll_y` / `scroll_offset`, which can't distinguish
+  "parked at the bottom, following" from "scrolled up during early streaming".
+
+### Fixed
+
+- A reader's **scroll-up during early streaming** now releases sticky-bottom
+  follow even when there's no room to move yet (`max_scroll_y` still ~0) (#12).
+  The release was latched only in `watch_scroll_y`, which never fires when the
+  scroll position can't change — so a wheel-up at the start of a stream was
+  swallowed and new content kept yanking the reader back to the tail. The intent
+  is now caught at the scroll event/action (wheel, PageUp/Home, arrow scroll),
+  independent of available room.
+
 ## [0.13.1] - 2026-08-07
 
 ### Fixed
