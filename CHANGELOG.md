@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-08-08
+
+### Added
+
+- **Viewport overlay** — `play_overlay(frames, *, fps=30, loop=False)` /
+  `stop_overlay()` / `overlay_active` / the `overlay` property / the
+  `OverlayFinished` message. Paints a full-viewport animation over everything,
+  **screen-relative** (fills the visible window, doesn't scroll) and
+  **non-destructive** (model / scroll / cursor untouched — stopping restores the
+  exact prior view). `frames(width, height)` returns a per-frame iterator of Rich
+  renderables sized to the viewport, re-invoked on resize and (with `loop=True`)
+  each cycle. oneshot (`loop=False`) plays once then clears and posts
+  `OverlayFinished`. Driven by FlowView's own animation timer.
+
+  FlowView stays effect-agnostic: it owns *painting the viewport*, while the
+  effect and any trigger policy (idle → screensaver, an intro, a transition) are
+  the caller's. New `examples/screensaver.py` drives a random
+  [TerminalTextEffects](https://github.com/ChrisBuilds/terminaltexteffects)
+  effect on idle (`Text.from_ansi(frame)` bridges TTE frames to renderables).
+
 ## [0.14.0] - 2026-08-07
 
 ### Added

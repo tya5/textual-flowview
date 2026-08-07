@@ -613,6 +613,38 @@ decorator.
 See `examples/progress.py` (a gutter spinner via `animation_fps`, body progress
 via `animate_entry`).
 
+### Viewport overlay (screensavers, transitions, shaders)
+
+`play_overlay` paints a **full-viewport** animation over everything — **screen-
+relative** (fills the visible window, doesn't scroll with content) and
+**non-destructive** (the model, scroll position and cursor are untouched, so it
+restores the exact prior view on stop):
+
+```python
+def frames(width, height):        # a per-frame iterator sized to the viewport
+    ...                           # yield Rich renderables (one per frame)
+
+flow.play_overlay(frames, fps=30, loop=True)   # start
+flow.stop_overlay()                            # stop -> exact prior view restored
+flow.overlay_active                            # -> bool
+```
+
+`frames(width, height)` is re-invoked on resize (and, with `loop=True`, each
+cycle — so a factory that picks a *random* effect cycles through different ones).
+**oneshot** (`loop=False`, the default) plays once, then clears the overlay
+(revealing the content beneath) and posts `FlowView.OverlayFinished` — ideal for
+intros/reveals where you've already set the real content underneath. It's driven
+by FlowView's own timer clock, the same mechanism as the other animations. The
+low-level hook is the `flow.overlay` property (assign a renderable to paint,
+`None` to clear) if you'd rather push frames from your own timer.
+
+FlowView owns *painting the viewport*; the effect, and any trigger policy (idle
+→ screensaver, an intro, a transition), are yours — nothing here knows about
+"screensavers". It's renderable-agnostic: for a
+[TerminalTextEffects](https://github.com/ChrisBuilds/terminaltexteffects) effect,
+convert each frame with `Text.from_ansi(frame)`. See `examples/screensaver.py`
+(idle-triggered, random TTE effect, dismiss on any key).
+
 ### Viewport-scoped resources (the general hook)
 
 `animate_entry` is a convenience over the general primitive: **tie any
@@ -801,6 +833,7 @@ PYTHONPATH=src python examples/infinite.py        # infinite scroll: lazy-load o
 PYTHONPATH=src python examples/progress.py        # Rich Spinner + ProgressBar in entries
 PYTHONPATH=src python examples/minimap.py         # minimap replacing the scrollbar
 PYTHONPATH=src python examples/chat.py            # streaming chat
+PYTHONPATH=src python examples/screensaver.py     # idle viewport overlay (needs: pip install terminaltexteffects)
 PYTHONPATH=src python examples/compare.py         # live FPS: VerticalScroll vs FlowView
 PYTHONPATH=src python examples/benchmark.py       # prints the benchmark table above
 ```

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any, ClassVar, Generic, Literal, TypeVar
 
 from rich.cells import cell_len
@@ -245,6 +245,20 @@ class FlowView(ScrollView, Generic[T]):
         def control(self) -> FlowView[Any]:
             return self.flow_view
 
+    class OverlayFinished(Message):
+        """Posted when a :meth:`play_overlay` animation ends on its own — the
+        frame source was exhausted and ``loop`` was not set. Not posted when the
+        overlay is cleared by :meth:`stop_overlay` (that's caller-initiated).
+        """
+
+        def __init__(self, flow_view: FlowView[Any]) -> None:
+            self.flow_view = flow_view
+            super().__init__()
+
+        @property
+        def control(self) -> FlowView[Any]:
+            return self.flow_view
+
     class Highlighted(Message):
         """Posted when the current entry **moves** — the cursor browsing across
         entries by keyboard or mouse (``selectable=True``). Fires
@@ -401,6 +415,18 @@ class FlowView(ScrollView, Generic[T]):
         self._animations: dict[
             int, tuple[Entry[T], Callable[[Entry[T]], None], Timer, VisibilityHandle]
         ] = {}
+        # Full-viewport overlay (screen-relative, non-destructive): render_line
+        # paints `_overlay_frame` over everything while it is set. play_overlay
+        # drives it with the widget's own set_interval clock (like the other
+        # animations); the property lets an app push frames on its own timer.
+        self._overlay_frame: RenderableType | None = None
+        self._overlay_strips: list[Strip] | None = None
+        self._overlay_strips_dims: tuple[int, int] = (0, 0)
+        self._overlay_timer: Timer | None = None
+        self._overlay_frames: Iterator[RenderableType] | None = None
+        self._overlay_factory: Callable[[int, int], Iterator[RenderableType]] | None = None
+        self._overlay_loop = False
+        self._overlay_dims: tuple[int, int] = (0, 0)
         # Ids of entries currently in the visible range (for lifecycle gating).
         self._visible_ids: set[int] = set()
         # Ids of entries in the present band (visible + overscan + read-ahead).
@@ -431,6 +457,8 @@ class FlowView(ScrollView, Generic[T]):
         self.refresh()
 
     def on_unmount(self) -> None:
+        if self._overlay_timer is not None:
+            self._overlay_timer.stop()
         self._model._detach()
 
     def on_resize(self) -> None:
@@ -1589,6 +1617,107 @@ class FlowView(ScrollView, Generic[T]):
             return
         callback(entry)
 
+    # -- viewport overlay (screensavers, transitions, animated shaders) -----
+
+    @property
+    def overlay(self) -> RenderableType | None:
+        """A full-viewport overlay renderable, painted **screen-relative** and
+        clipped to the view, over the normal content. Set it to paint; ``None``
+        clears it. **Non-destructive** — the model, scroll position, entry cursor
+        and text cursor are untouched, so clearing restores the exact prior view.
+
+        This is the low-level hook: assign a renderable each frame from your own
+        timer, or let :meth:`play_overlay` drive it. FlowView stays agnostic to
+        what the frames are — e.g. ``Text.from_ansi(frame)`` for a
+        TerminalTextEffects effect."""
+        return self._overlay_frame
+
+    @overlay.setter
+    def overlay(self, renderable: RenderableType | None) -> None:
+        self._overlay_frame = renderable
+        self._overlay_strips = None  # re-render on next paint
+        self.refresh()
+
+    @property
+    def overlay_active(self) -> bool:
+        """Whether a viewport overlay is currently painted."""
+        return self._overlay_frame is not None
+
+    def play_overlay(
+        self,
+        frames: Callable[[int, int], Iterator[RenderableType]],
+        *,
+        fps: float = 30,
+        loop: bool = False,
+    ) -> None:
+        """Play a full-viewport animated overlay. ``frames(width, height)``
+        returns a per-frame iterator of renderables sized to the viewport; it is
+        re-invoked on resize (and, with ``loop``, each cycle) — so a factory that
+        picks a random effect loops through different ones.
+
+        **oneshot** (``loop=False``, the default): plays once; when the iterator
+        is exhausted the overlay clears (revealing the content beneath) and
+        :class:`OverlayFinished` is posted. **loop=True**: re-creates the source
+        and repeats until :meth:`stop_overlay`. Driven by the widget's own timer
+        clock — the same mechanism as the other animations. Non-destructive: the
+        underlying view keeps updating beneath and is restored intact on stop.
+
+        FlowView owns *painting the viewport*; the effect, its timing source and
+        any idle/trigger policy (a screensaver, an intro, a transition) are the
+        caller's — nothing here knows about "screensavers"."""
+        self._teardown_overlay()
+        self._overlay_factory = frames
+        self._overlay_loop = loop
+        self._overlay_dims = (self._content_width(), self.size.height)
+        self._overlay_frames = frames(*self._overlay_dims)
+        self._overlay_timer = self.set_interval(1 / max(1e-6, fps), self._overlay_tick)
+        self._overlay_tick()  # paint frame 0 now, don't wait a full interval
+
+    def stop_overlay(self) -> None:
+        """Stop any running overlay and clear it (a no-op if none). Restores the
+        exact prior view; does **not** post :class:`OverlayFinished`."""
+        self._teardown_overlay()
+
+    def _overlay_tick(self) -> None:
+        if self._overlay_frames is None or self._overlay_factory is None:
+            return
+        dims = (self._content_width(), self.size.height)
+        if dims != self._overlay_dims:  # resized: rebuild the source at new size
+            self._overlay_dims = dims
+            self._overlay_frames = self._overlay_factory(*dims)
+        frame = next(self._overlay_frames, None)
+        if frame is None:  # exhausted
+            if self._overlay_loop:
+                self._overlay_frames = self._overlay_factory(*self._overlay_dims)
+                frame = next(self._overlay_frames, None)
+            if frame is None:
+                self._finish_overlay()
+                return
+        self.overlay = frame
+
+    def _finish_overlay(self) -> None:
+        self._teardown_overlay()
+        self.post_message(self.OverlayFinished(self))
+
+    def _teardown_overlay(self) -> None:
+        if self._overlay_timer is not None:
+            self._overlay_timer.stop()
+            self._overlay_timer = None
+        self._overlay_frames = None
+        self._overlay_factory = None
+        if self._overlay_frame is not None:
+            self.overlay = None  # clear + refresh
+
+    def _overlay_line(self, y: int) -> Strip:
+        w, h = self._content_width(), self.size.height
+        if w <= 0 or self._overlay_frame is None:
+            return Strip.blank(self.size.width)
+        if self._overlay_strips is None or self._overlay_strips_dims != (w, h):
+            self._overlay_strips = self._render_to_strips(self._overlay_frame, w, h)
+            self._overlay_strips_dims = (w, h)
+        strips = self._overlay_strips
+        return strips[y] if 0 <= y < len(strips) else Strip.blank(w)
+
     # -- search ------------------------------------------------------------
 
     def find(self, predicate: Callable[[Entry[T]], bool]) -> list[Entry[T]]:
@@ -1716,6 +1845,10 @@ class FlowView(ScrollView, Generic[T]):
     # -- rendering ---------------------------------------------------------
 
     def render_line(self, y: int) -> Strip:
+        # A viewport overlay (screensaver / transition) paints over everything,
+        # screen-relative, without touching any content state.
+        if self._overlay_frame is not None:
+            return self._overlay_line(y)
         content_width = self._content_width()
         if content_width <= 0:
             return Strip.blank(self.size.width)
