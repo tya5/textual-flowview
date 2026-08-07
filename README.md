@@ -581,6 +581,11 @@ is cell-based, so it virtualizes and clips correctly as the feed scrolls; other
 terminals fall back to a half-block approximation automatically. See
 [`examples/image.py`](examples/image.py) (avatars + text, an inline picture).
 
+An **animated GIF** is just image frames advanced on a timer — pair the image
+renderable with `animate_entry`, which ticks only while the entry is on screen
+(**an off-screen GIF stops animating automatically**). See
+[`examples/gif.py`](examples/gif.py).
+
 FlowView caches an entry's render, so animation needs a clock. There is **one
 animation primitive** — `animate_entry` — and the callback decides *what* to
 re-render, so the gutter and the body animate the same way:
@@ -866,6 +871,7 @@ PYTHONPATH=src python examples/progress.py        # Rich Spinner + ProgressBar i
 PYTHONPATH=src python examples/minimap.py         # minimap replacing the scrollbar
 PYTHONPATH=src python examples/chat.py            # streaming chat
 PYTHONPATH=src python examples/image.py           # images + text in the feed (needs: pip install textual-image pillow; real pixels on Kitty)
+PYTHONPATH=src python examples/gif.py             # animated GIF in an entry, auto-pauses off-screen (needs: pip install rich-pixels pillow)
 PYTHONPATH=src python examples/screensaver.py     # idle viewport overlay (needs: pip install terminaltexteffects)
 PYTHONPATH=src python examples/compare.py         # live FPS: VerticalScroll vs FlowView
 PYTHONPATH=src python examples/benchmark.py       # prints the benchmark table above

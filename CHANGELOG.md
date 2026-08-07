@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.3] - 2026-08-08
+
+### Added
+
+- `examples/gif.py` — an animated GIF playing in a feed entry. A GIF is just
+  image frames advanced on a timer: render the current frame as a renderable and
+  drive it with `animate_entry`, which ticks **only while the entry is on
+  screen**, so an off-screen GIF stops animating automatically (and resumes on
+  scroll-in). No core change; frames are half-blocks (rich-pixels), cheap per
+  frame and terminal-agnostic — the fit for animation, vs real-pixel stills.
+
 ## [0.15.2] - 2026-08-08
 
 ### Added
