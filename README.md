@@ -44,7 +44,7 @@ your data type.
 ## Why virtualize? (measured)
 
 The same list built two ways — a Textual `VerticalScroll` with one `Static`
-widget per row vs a `FlowView` — at N rows (`examples/benchmark.py`, mid-range
+widget per row vs a `FlowView` — at N rows ([`examples/benchmark.py`](examples/benchmark.py), mid-range
 laptop):
 
 | rows | build (container → flowview) | widgets (container → flowview) | full re-layout / resize |
@@ -59,7 +59,7 @@ with the list. FlowView **paints** the visible rows, so it is O(viewport): **one
 widget regardless of N**, a flat build and re-layout, and scrolling that stays
 smooth.
 
-`examples/compare.py` shows it live with an FPS meter on the same 1500-row list.
+[`examples/compare.py`](examples/compare.py) shows it live with an FPS meter on the same 1500-row list.
 Flip `c` / `f` for the backend and `d` for the content:
 
 ![The same 1500-row list: a Static-per-row container vs a FlowView, with a live FPS meter](assets/compare.gif)
@@ -208,7 +208,7 @@ entry.set_hidden(True)
 ```
 
 A collapsible header is then just hiding a run of child entries — see
-`examples/groups.py`:
+[`examples/groups.py`](examples/groups.py):
 
 ```python
 def collapse_group(header, children):
@@ -243,7 +243,7 @@ you want the pinned header to stand out:
 FlowView > .flowview--sticky-header { background: $panel; }
 ```
 
-See `examples/groups.py`.
+See [`examples/groups.py`](examples/groups.py).
 
 ### Headers & footers
 
@@ -252,7 +252,7 @@ covered:
 
 - **Fixed chrome** (a title bar, toolbar, or input that stays put) is a plain
   widget *outside* the FlowView — just put a `Static` / `Panel` / `Input` above
-  or below it in `compose` (see the input bar in `examples/chat.py`).
+  or below it in `compose` (see the input bar in [`examples/chat.py`](examples/chat.py)).
 - A **band that scrolls with the content** (an intro banner, a "load more"
   footer, a "— start of history —" marker) is a regular **entry** — `insert(0,
   …)` for a header, `append(…)` for a footer, presented however you like. It
@@ -282,7 +282,7 @@ def compose(self):
 
 State→colour is overridable (`FlowMinimap(..., colors={EntryState.ERROR: "magenta"})`)
 and the window band is themed via the `flowminimap--window` component class.
-See `examples/minimap.py` (a 400-line scan log — errors are visible at a glance).
+See [`examples/minimap.py`](examples/minimap.py) (a 400-line scan log — errors are visible at a glance).
 
 ## Keys & focus
 
@@ -404,7 +404,7 @@ This works in **both directions**: newest-at-bottom (`STICKY_BOTTOM`, scroll up 
 scroll down → `ReachedBottom` → `extend(...)` for older; appending below never
 shifts the view).
 
-See `examples/infinite.py` (a log that pages in older lines as you scroll up).
+See [`examples/infinite.py`](examples/infinite.py) (a log that pages in older lines as you scroll up).
 
 ## Smooth scrolling (overscan & read-ahead)
 
@@ -482,7 +482,7 @@ pick). That split is the whole model — move vs. act.
 FlowView > .flowview--highlight { background: $accent 30%; }
 ```
 
-See `examples/highlight.py`.
+See [`examples/highlight.py`](examples/highlight.py).
 
 ## Text cursor & visual mode (vim-style)
 
@@ -527,7 +527,7 @@ The default vim keys: **`c`** show/hide cursor, `h`/`j`/`k`/`l`, `w`/`b`/`e`,
 `Esc` (cancel a selection). Char-level keys (`h`/`l`/`w`/`y`/…) **bubble to your
 app while the cursor is hidden**, so a plain feed doesn't steal them; `j`/`k`
 stay live for navigation. They're normal focus-scoped `BINDINGS` — subclass
-FlowView and override them to rebind. See `examples/copy_mode.py`.
+FlowView and override them to rebind. See [`examples/copy_mode.py`](examples/copy_mode.py).
 
 **Clipboard.** Yank goes through `write_clipboard()`, which by default uses
 Textual's `App.copy_to_clipboard` — the terminal's **OSC 52** escape. That does
@@ -610,7 +610,7 @@ visible entries (equivalent to `refresh_gutter` on each, with no per-entry
 registration) — handy for "every RUNNING entry spins" with a time-based
 decorator.
 
-See `examples/progress.py` (a gutter spinner via `animation_fps`, body progress
+See [`examples/progress.py`](examples/progress.py) (a gutter spinner via `animation_fps`, body progress
 via `animate_entry`).
 
 ### Viewport overlay (screensavers, transitions, shaders)
@@ -666,7 +666,7 @@ flow.play_overlay(frames, fps=30, loop=True)
 This is deliberate: bundling TTE (or wrapping its API in a helper here) would
 couple FlowView to a specific effects library and burden consumers who don't use
 one. The seam is `frames → RenderableType`, so any ANSI/Rich frame source works.
-See `examples/screensaver.py` (idle-triggered, random TTE effect, dismiss on any
+See [`examples/screensaver.py`](examples/screensaver.py) (idle-triggered, random TTE effect, dismiss on any
 key).
 
 ### Viewport-scoped resources (the general hook)
@@ -711,7 +711,7 @@ class MyApp(App):
 Replace a specific item's content at any time — mutate it and `entry.update()`,
 or swap the whole object with `entry.set_item(new)` (handy for immutable items
 via `dataclasses.replace`). Either re-presents just that entry. See
-`examples/intervention.py` for a clickable selector that resolves via
+[`examples/intervention.py`](examples/intervention.py) for a clickable selector that resolves via
 `set_item`.
 
 ### Incremental streaming (`patch_rows`)
@@ -825,7 +825,7 @@ so its context is visible: `flow.scroll_to_entry(hit, align="center")`.
 Clipboard copy uses Textual's own `App.copy_to_clipboard` (OSC 52):
 `entry_text(entry)` returns the entry's rendered body as plain text, and
 `copy_entry(entry)` copies it and returns it. Bind it to a key for a copy
-action (see `examples/showcase.py`, `y`).
+action (see [`examples/showcase.py`](examples/showcase.py), `y`).
 
 ### Mouse text selection
 
