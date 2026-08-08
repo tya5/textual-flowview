@@ -70,8 +70,8 @@ def _frames(n: int) -> Callable[[int, int, list[str]], Iterator[RenderableType]]
 
 @pytest.mark.asyncio
 async def test_play_overlay_hands_the_covered_lines_to_the_factory() -> None:
-    # The overlay passes the body text it is covering (the current viewport) to
-    # the frame factory, so an effect can act on the screen without the consumer
+    # The overlay passes the text it is covering (the current viewport) to the
+    # frame factory, so an effect can act on the screen without the consumer
     # recomputing it from the scroll offset.
     app = OverlayApp(60)
     async with app.run_test(size=(30, 10)) as pilot:
@@ -91,9 +91,47 @@ async def test_play_overlay_hands_the_covered_lines_to_the_factory() -> None:
         assert captured, "factory was called"
         covered = captured[0]
         assert len(covered) == v.size.height          # one string per covered row
-        top = int(v.scroll_offset.y)
-        assert covered == [v.row_text(top + y) for y in range(v.size.height)]
         assert any("content 1" in line for line in covered)  # the scrolled-to screen
+
+
+@pytest.mark.asyncio
+async def test_covered_lines_include_the_gutter() -> None:
+    # The overlay paints the FULL content width (gutters included), so the
+    # covered text must match — not the body-only view of row_text (whose
+    # offsets are body-relative for selection).
+    class Gutter:
+        def decorate(self, entry: object, width: int, height: int) -> Text:
+            return Text("**"[:width])
+
+    model: FlowModel[str] = FlowModel()
+    for i in range(20):
+        model.append(f"content {i}")
+
+    class GutterApp(App):
+        def compose(self) -> ComposeResult:
+            self.flow = FlowView(
+                model=model, presenter=P(), spacing=0, estimated_height=1,
+                decorator=Gutter(), gutter_width=2,
+            )
+            yield self.flow
+
+    app = GutterApp()
+    async with app.run_test(size=(30, 8)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        captured: list[list[str]] = []
+
+        def factory(w: int, h: int, covered: list[str]) -> Iterator[RenderableType]:
+            captured.append(covered)
+            yield Text("\n".join("." * w for _ in range(h)))
+
+        v.play_overlay(factory, fps=120, loop=False)
+        await pilot.pause()
+        covered = captured[0]
+        assert covered[0].startswith("**")        # gutter glyphs are included
+        assert "content 0" in covered[0]          # ...along with the body
+        assert v.row_text(0) == "content 0"       # row_text stays body-only
 
 
 @pytest.mark.asyncio

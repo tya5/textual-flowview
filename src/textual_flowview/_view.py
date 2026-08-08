@@ -1654,11 +1654,14 @@ class FlowView(ScrollView, Generic[T]):
     ) -> None:
         """Play a full-viewport animated overlay. ``frames(width, height, covered)``
         returns a per-frame iterator of renderables sized to the viewport, where
-        ``covered`` is the body text of the rows the overlay is hiding right now —
-        one string per row, top to bottom — so an effect can *act on the current
-        screen* (dissolve it, rain it away) without reconstructing it from the
-        scroll offset. ``len(covered) == height`` always: one entry per canvas
-        row, ``""`` for rows past the end of the content or spacer gaps. The
+        ``covered`` is the text of the rows the overlay is hiding right now — one
+        string per row, top to bottom, **exactly as painted (gutters, sticky
+        header and separators included)**, since the overlay covers the full
+        content width — so an effect can *act on the current screen* (dissolve it,
+        rain it away) without reconstructing it from the scroll offset. (Contrast
+        :meth:`row_text`, which is body-only for selection purposes.)
+        ``len(covered) == height`` always: one entry per canvas row, ``""`` for
+        rows past the end of the content or spacer gaps. The
         factory is re-invoked on resize (and, with ``loop``, each cycle), so it
         sees the current size and covered text each time — and a factory that
         picks a random effect loops through different ones.
@@ -1687,12 +1690,16 @@ class FlowView(ScrollView, Generic[T]):
         self._teardown_overlay()
 
     def _overlay_covered_lines(self) -> list[str]:
-        """The body text the overlay is covering: one string per visible row (as
-        many as the canvas is tall), scroll offset resolved. Handed to the frame
-        factory so the effect can act on the current screen."""
+        """The text the overlay is covering: one string per visible row, exactly
+        as painted — **gutters, sticky header and separators included**, because
+        the overlay covers the full content width, not just the body. (Contrast
+        :meth:`row_text`, which is body-only: selection offsets are body-relative.)
+        Handed to the frame factory so the effect can act on the current screen."""
         self._sync_scroll()
-        top = int(self.scroll_offset.y)
-        return [self.row_text(top + y) for y in range(self._overlay_dims[1])]
+        return [
+            "".join(segment.text for segment in self._content_line(y)).rstrip()
+            for y in range(self._overlay_dims[1])
+        ]
 
     def _new_overlay_iter(self) -> Iterator[RenderableType] | None:
         if self._overlay_factory is None:
@@ -1871,6 +1878,13 @@ class FlowView(ScrollView, Generic[T]):
         # screen-relative, without touching any content state.
         if self._overlay_frame is not None:
             return self._overlay_line(y)
+        return self._content_line(y)
+
+    def _content_line(self, y: int) -> Strip:
+        """The normal (overlay-free) strip for screen row ``y`` — gutters, sticky
+        header and separators included. Shared by :meth:`render_line` and the
+        overlay's covered-lines capture, so what an overlay hides is exactly what
+        it is handed."""
         content_width = self._content_width()
         if content_width <= 0:
             return Strip.blank(self.size.width)

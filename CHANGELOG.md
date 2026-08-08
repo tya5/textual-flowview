@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-08-08
+
+### Fixed
+
+- The overlay's `covered` lines now match **what the overlay actually covers**:
+  the rows exactly as painted, **gutters (and sticky header / separators)
+  included**. They were built from `row_text`, which is deliberately body-only
+  (selection offsets are body-relative), while the overlay paints the full
+  content width — so an effect applied to `covered` was narrower than the region
+  it replaced. `render_line` and the covered-lines capture now share one
+  composition path, so the two can't drift apart.
+
+  The factory signature is unchanged (`frames(width, height, covered)`, with
+  `len(covered) == height`); only the string contents grow to include the gutter.
+  `row_text` is unchanged and stays body-only.
+
 ## [0.16.0] - 2026-08-08
 
 ### Changed
