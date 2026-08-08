@@ -48,21 +48,44 @@ except ModuleNotFoundError:  # pragma: no cover
 
 EFFECTS = [Rain, Beams, Slide, Spray]
 IDLE_SECONDS = 3.0
+REWIND_SKIP = 3   # reverse plays every Nth cached frame -> a fast rewind
+MAX_FRAMES = 120  # cap the one-time render (~19 ms/frame) so startup stays snappy
 
 
-def dissolve_screen(
-    width: int, height: int, covered: list[str]
-) -> Iterator[RenderableType]:
-    """Frame factory: apply a random TTE effect to **the text the overlay is
-    covering** — the current screen, handed in as ``covered`` — so the feed
-    appears to dissolve/rain away. Called each loop cycle (and on resize), so it
-    always uses the current screen and a fresh random effect."""
-    text = "\n".join(covered).rstrip() or "idle"
-    effect = random.choice(EFFECTS)(text)
-    effect.terminal_config.canvas_width = width
-    effect.terminal_config.canvas_height = height
-    for frame in effect:
-        yield Text.from_ansi(frame)
+class DissolveScreen:
+    """A cached, boomerang overlay effect over the covered screen.
+
+    TTE's per-frame compute is ~19 ms and runs on the event loop, so instead of
+    computing every frame live we **render the whole effect once** (on the first
+    call, per size) and cache the frames. Playback then just cycles the cached
+    renderables (~2 ms/frame): the screen dissolves at **full speed forward**,
+    then **fast-rewinds** back — the reverse is decimated (every ``REWIND_SKIP``th
+    frame), giving a slow-dissolve / snap-back rhythm rather than a plain loop.
+    One random effect and one screen snapshot per screensaver session (a fresh
+    instance is used each time it starts).
+
+    Cost trade: a one-time render (~seconds) when the saver first appears, then
+    smooth cheap looping. Move the extraction to a worker to hide that startup."""
+
+    def __init__(self) -> None:
+        self._cache: list[RenderableType] | None = None
+        self._dims: tuple[int, int] = (0, 0)
+
+    def __call__(
+        self, width: int, height: int, covered: list[str]
+    ) -> Iterator[RenderableType]:
+        if self._cache is None or self._dims != (width, height):
+            text = "\n".join(covered).rstrip() or "idle"
+            effect = random.choice(EFFECTS)(text)
+            effect.terminal_config.canvas_width = width
+            effect.terminal_config.canvas_height = height
+            self._cache = [
+                Text.from_ansi(frame)
+                for frame, _ in zip(effect, range(MAX_FRAMES), strict=False)
+            ]  # render once, capped so the one-time cost stays bounded
+            self._dims = (width, height)
+        rewind = self._cache[-2:0:-1][::REWIND_SKIP]  # reverse, decimated = fast
+        return iter(self._cache + rewind)
 
 
 class LinePresenter:
@@ -94,10 +117,9 @@ class ScreensaverApp(App):
         if self.flow.overlay_active:
             return
         if time.monotonic() - self._last_activity >= IDLE_SECONDS:
-            # loop=True: a fresh random effect each cycle, over the current screen.
-            # TTE's per-frame compute (~19 ms) runs on the event loop, so keep the
-            # fps modest — 20 is plenty for a screensaver and halves the load vs 30.
-            self.flow.play_overlay(dissolve_screen, fps=20, loop=True)
+            # A fresh cached-boomerang effect per session; loop=True repeats the
+            # cached forward+reverse sweep, so playback stays cheap (~2 ms/frame).
+            self.flow.play_overlay(DissolveScreen(), fps=20, loop=True)
 
     def _wake(self) -> None:
         self._last_activity = time.monotonic()
