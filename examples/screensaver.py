@@ -48,8 +48,7 @@ except ModuleNotFoundError:  # pragma: no cover
 
 EFFECTS = [Rain, Beams, Slide, Spray]
 IDLE_SECONDS = 3.0
-REWIND_SKIP = 3   # reverse plays every Nth cached frame -> a fast rewind
-MAX_FRAMES = 120  # cap the one-time render (~19 ms/frame) so startup stays snappy
+REWIND_SKIP = 3  # reverse plays every Nth cached frame -> a fast rewind
 
 
 class DissolveScreen:
@@ -64,8 +63,12 @@ class DissolveScreen:
     One random effect and one screen snapshot per screensaver session (a fresh
     instance is used each time it starts).
 
-    Cost trade: a one-time render (~seconds) when the saver first appears, then
-    smooth cheap looping. Move the extraction to a worker to hide that startup."""
+    Cost trade: the whole effect is rendered on the first call (these full-screen
+    effects run a few hundred frames — several to ~20 s of one-time compute),
+    which blocks the loop while it runs. That's the simplest correct version; for
+    production, render it in a worker so the startup doesn't freeze input. (TTE
+    exposes no frame count up front — you only know the length by running it, so
+    the cache holds however many frames the effect takes to complete.)"""
 
     def __init__(self) -> None:
         self._cache: list[RenderableType] | None = None
@@ -79,10 +82,9 @@ class DissolveScreen:
             effect = random.choice(EFFECTS)(text)
             effect.terminal_config.canvas_width = width
             effect.terminal_config.canvas_height = height
-            self._cache = [
-                Text.from_ansi(frame)
-                for frame, _ in zip(effect, range(MAX_FRAMES), strict=False)
-            ]  # render once, capped so the one-time cost stays bounded
+            # render the whole effect once, to completion, so the boomerang
+            # reverses from the fully-assembled screen (no mid-animation rewind)
+            self._cache = [Text.from_ansi(frame) for frame in effect]
             self._dims = (width, height)
         rewind = self._cache[-2:0:-1][::REWIND_SKIP]  # reverse, decimated = fast
         return iter(self._cache + rewind)
