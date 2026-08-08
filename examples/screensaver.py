@@ -94,8 +94,10 @@ class ScreensaverApp(App):
         if self.flow.overlay_active:
             return
         if time.monotonic() - self._last_activity >= IDLE_SECONDS:
-            # loop=True: a fresh random effect each cycle, over the current screen
-            self.flow.play_overlay(dissolve_screen, fps=30, loop=True)
+            # loop=True: a fresh random effect each cycle, over the current screen.
+            # TTE's per-frame compute (~19 ms) runs on the event loop, so keep the
+            # fps modest — 20 is plenty for a screensaver and halves the load vs 30.
+            self.flow.play_overlay(dissolve_screen, fps=20, loop=True)
 
     def _wake(self) -> None:
         self._last_activity = time.monotonic()
