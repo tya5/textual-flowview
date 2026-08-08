@@ -424,7 +424,9 @@ class FlowView(ScrollView, Generic[T]):
         self._overlay_strips_dims: tuple[int, int] = (0, 0)
         self._overlay_timer: Timer | None = None
         self._overlay_frames: Iterator[RenderableType] | None = None
-        self._overlay_factory: Callable[[int, int], Iterator[RenderableType]] | None = None
+        self._overlay_factory: (
+            Callable[[int, int, list[str]], Iterator[RenderableType]] | None
+        ) = None
         self._overlay_loop = False
         self._overlay_dims: tuple[int, int] = (0, 0)
         # Ids of entries currently in the visible range (for lifecycle gating).
@@ -1645,15 +1647,19 @@ class FlowView(ScrollView, Generic[T]):
 
     def play_overlay(
         self,
-        frames: Callable[[int, int], Iterator[RenderableType]],
+        frames: Callable[[int, int, list[str]], Iterator[RenderableType]],
         *,
         fps: float = 30,
         loop: bool = False,
     ) -> None:
-        """Play a full-viewport animated overlay. ``frames(width, height)``
-        returns a per-frame iterator of renderables sized to the viewport; it is
-        re-invoked on resize (and, with ``loop``, each cycle) — so a factory that
-        picks a random effect loops through different ones.
+        """Play a full-viewport animated overlay. ``frames(width, height, covered)``
+        returns a per-frame iterator of renderables sized to the viewport, where
+        ``covered`` is the body text of the rows the overlay is hiding right now —
+        one string per row, top to bottom — so an effect can *act on the current
+        screen* (dissolve it, rain it away) without reconstructing it from the
+        scroll offset. The factory is re-invoked on resize (and, with ``loop``,
+        each cycle), so it sees the current size and covered text each time — and
+        a factory that picks a random effect loops through different ones.
 
         **oneshot** (``loop=False``, the default): plays once; when the iterator
         is exhausted the overlay clears (revealing the content beneath) and
@@ -1669,7 +1675,7 @@ class FlowView(ScrollView, Generic[T]):
         self._overlay_factory = frames
         self._overlay_loop = loop
         self._overlay_dims = (self._content_width(), self.size.height)
-        self._overlay_frames = frames(*self._overlay_dims)
+        self._overlay_frames = self._new_overlay_iter()
         self._overlay_timer = self.set_interval(1 / max(1e-6, fps), self._overlay_tick)
         self._overlay_tick()  # paint frame 0 now, don't wait a full interval
 
@@ -1678,18 +1684,32 @@ class FlowView(ScrollView, Generic[T]):
         exact prior view; does **not** post :class:`OverlayFinished`."""
         self._teardown_overlay()
 
+    def _overlay_covered_lines(self) -> list[str]:
+        """The body text the overlay is covering: one string per visible row (as
+        many as the canvas is tall), scroll offset resolved. Handed to the frame
+        factory so the effect can act on the current screen."""
+        self._sync_scroll()
+        top = int(self.scroll_offset.y)
+        return [self.row_text(top + y) for y in range(self._overlay_dims[1])]
+
+    def _new_overlay_iter(self) -> Iterator[RenderableType] | None:
+        if self._overlay_factory is None:
+            return None
+        w, h = self._overlay_dims
+        return self._overlay_factory(w, h, self._overlay_covered_lines())
+
     def _overlay_tick(self) -> None:
         if self._overlay_frames is None or self._overlay_factory is None:
             return
         dims = (self._content_width(), self.size.height)
         if dims != self._overlay_dims:  # resized: rebuild the source at new size
             self._overlay_dims = dims
-            self._overlay_frames = self._overlay_factory(*dims)
-        frame = next(self._overlay_frames, None)
+            self._overlay_frames = self._new_overlay_iter()
+        frame = next(self._overlay_frames, None) if self._overlay_frames else None
         if frame is None:  # exhausted
             if self._overlay_loop:
-                self._overlay_frames = self._overlay_factory(*self._overlay_dims)
-                frame = next(self._overlay_frames, None)
+                self._overlay_frames = self._new_overlay_iter()
+                frame = next(self._overlay_frames, None) if self._overlay_frames else None
             if frame is None:
                 self._finish_overlay()
                 return

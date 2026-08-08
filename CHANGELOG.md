@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-08-08
+
+### Changed
+
+- **`play_overlay`'s frame factory now receives the covered lines**:
+  `frames(width, height, covered)` — `covered` is the body text of the rows the
+  overlay is hiding right now (one string per visible row, top to bottom, scroll
+  offset resolved). So an effect can act on the current screen (dissolve it, rain
+  it away) without the caller recomputing it from `scroll_offset` + `row_text`.
+  The overlay owns what it covers, so it hands it to the callback rather than
+  exposing a standalone accessor. `examples/screensaver.py` now dissolves the
+  actual on-screen text. (Breaking: the factory takes a third argument.)
+
 ## [0.15.3] - 2026-08-08
 
 ### Added

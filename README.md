@@ -634,16 +634,20 @@ relative** (fills the visible window, doesn't scroll with content) and
 restores the exact prior view on stop):
 
 ```python
-def frames(width, height):        # a per-frame iterator sized to the viewport
-    ...                           # yield Rich renderables (one per frame)
+def frames(width, height, covered):   # a per-frame iterator sized to the viewport
+    # `covered` = the visible lines the overlay is hiding (top to bottom), so the
+    # effect can act on the current screen — dissolve it, rain it away — without
+    # recomputing it from the scroll offset.
+    ...                               # yield Rich renderables (one per frame)
 
 flow.play_overlay(frames, fps=30, loop=True)   # start
 flow.stop_overlay()                            # stop -> exact prior view restored
 flow.overlay_active                            # -> bool
 ```
 
-`frames(width, height)` is re-invoked on resize (and, with `loop=True`, each
-cycle — so a factory that picks a *random* effect cycles through different ones).
+`frames(width, height, covered)` is re-invoked on resize (and, with `loop=True`,
+each cycle — so it always sees the current screen, and a factory that picks a
+*random* effect cycles through different ones).
 **oneshot** (`loop=False`, the default) plays once, then clears the overlay
 (revealing the content beneath) and posts `FlowView.OverlayFinished` — ideal for
 intros/reveals where you've already set the real content underneath. It's driven

@@ -61,11 +61,39 @@ async def test_overlay_property_paints_and_clears_non_destructively() -> None:
         assert any("content" in r for r in _viewport_text(v))
 
 
-def _frames(n: int) -> Callable[[int, int], Iterator[RenderableType]]:
-    def factory(w: int, h: int) -> Iterator[RenderableType]:
+def _frames(n: int) -> Callable[[int, int, list[str]], Iterator[RenderableType]]:
+    def factory(w: int, h: int, covered: list[str]) -> Iterator[RenderableType]:
         for i in range(n):
             yield Text("\n".join(f"frame{i}" for _ in range(h)))
     return factory
+
+
+@pytest.mark.asyncio
+async def test_play_overlay_hands_the_covered_lines_to_the_factory() -> None:
+    # The overlay passes the body text it is covering (the current viewport) to
+    # the frame factory, so an effect can act on the screen without the consumer
+    # recomputing it from the scroll offset.
+    app = OverlayApp(60)
+    async with app.run_test(size=(30, 10)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        v.scroll_to(y=12, animate=False)
+        await pilot.pause()
+        captured: list[list[str]] = []
+
+        def factory(w: int, h: int, covered: list[str]) -> Iterator[RenderableType]:
+            captured.append(covered)
+            yield Text("\n".join("." * w for _ in range(h)))
+
+        v.play_overlay(factory, fps=120, loop=False)
+        await pilot.pause()
+        assert captured, "factory was called"
+        covered = captured[0]
+        assert len(covered) == v.size.height          # one string per covered row
+        top = int(v.scroll_offset.y)
+        assert covered == [v.row_text(top + y) for y in range(v.size.height)]
+        assert any("content 1" in line for line in covered)  # the scrolled-to screen
 
 
 @pytest.mark.asyncio
