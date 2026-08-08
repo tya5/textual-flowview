@@ -637,7 +637,8 @@ restores the exact prior view on stop):
 def frames(width, height, covered):   # a per-frame iterator sized to the viewport
     # `covered` = the visible lines the overlay is hiding (top to bottom), so the
     # effect can act on the current screen — dissolve it, rain it away — without
-    # recomputing it from the scroll offset.
+    # recomputing it from the scroll offset. `len(covered) == height` always
+    # (one string per row; "" past the end of the content).
     ...                               # yield Rich renderables (one per frame)
 
 flow.play_overlay(frames, fps=30, loop=True)   # start

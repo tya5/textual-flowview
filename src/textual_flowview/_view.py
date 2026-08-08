@@ -1657,9 +1657,11 @@ class FlowView(ScrollView, Generic[T]):
         ``covered`` is the body text of the rows the overlay is hiding right now —
         one string per row, top to bottom — so an effect can *act on the current
         screen* (dissolve it, rain it away) without reconstructing it from the
-        scroll offset. The factory is re-invoked on resize (and, with ``loop``,
-        each cycle), so it sees the current size and covered text each time — and
-        a factory that picks a random effect loops through different ones.
+        scroll offset. ``len(covered) == height`` always: one entry per canvas
+        row, ``""`` for rows past the end of the content or spacer gaps. The
+        factory is re-invoked on resize (and, with ``loop``, each cycle), so it
+        sees the current size and covered text each time — and a factory that
+        picks a random effect loops through different ones.
 
         **oneshot** (``loop=False``, the default): plays once; when the iterator
         is exhausted the overlay clears (revealing the content beneath) and
