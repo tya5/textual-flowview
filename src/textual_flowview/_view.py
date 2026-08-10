@@ -2426,33 +2426,40 @@ class FlowView(ScrollView, Generic[T]):
         self._band_ids = {entry.id for entry in band}
         for entry in band:
             self._present_entry(entry)
-        self._trim_strip_cache()
+        self._trim_paint_caches()
         self._sync_visibility()
 
-    def _trim_strip_cache(self) -> None:
-        """Drop cached strips for entries outside the present band.
+    def _trim_paint_caches(self) -> None:
+        """Drop cached paint output — body strips, gutters, separators — for
+        entries outside the present band.
 
-        Strips are a **per-frame** optimisation: ``render_line`` is row-granular
-        while rendering is entry-granular, so the cache collapses an entry's N
+        These are **per-frame** optimisations: ``render_line`` is row-granular
+        while rendering is entry-granular, so the caches collapse an entry's N
         row-requests into one render. An off-band entry has no rows to collapse,
-        so its strips are dead weight — retaining them made memory grow with
+        so its cached output is dead weight — retaining it made memory grow with
         every entry ever *visited* rather than with what's on screen.
 
-        Dropping them is cheap and invisible: the :class:`Presentation` is kept,
-        so scrolling back re-renders the strips **synchronously** (sub-millisecond)
-        with no placeholder and no re-``present``. The band is wider than the
-        viewport (overscan + directional read-ahead), so ordinary scrolling
-        doesn't thrash. The pinned sticky header is kept regardless of where it
-        sits — it is composed on every frame even when it scrolled above the band.
+        Dropping it is cheap and invisible: the :class:`Presentation` is kept,
+        so scrolling back re-renders **synchronously** (sub-millisecond) with no
+        placeholder and no re-``present``. The band is wider than the viewport
+        (overscan + directional read-ahead), so ordinary scrolling doesn't
+        thrash. The pinned sticky header is kept regardless of where it sits — it
+        is composed on every frame even when it scrolled above the band.
         """
-        if not self._strip_cache:
-            return
         keep = self._band_ids
         sticky = self._sticky_state(self._viewport.scroll_y)
         sticky_id = sticky[0].id if sticky is not None else None
-        for entry_id in [
-            key
-            for key in self._strip_cache
-            if key not in keep and key != sticky_id
-        ]:
+
+        def evicted(entry_id: int) -> bool:
+            return entry_id not in keep and entry_id != sticky_id
+
+        for entry_id in [k for k in self._strip_cache if evicted(k)]:
             del self._strip_cache[entry_id]
+        for gutter_key in [k for k in self._gutter_cache if evicted(k[0])]:
+            del self._gutter_cache[gutter_key]
+        # A separator is drawn in the gap between two entries, so it stays while
+        # either side is still in play.
+        for sep_key in [
+            k for k in self._separator_cache if evicted(k[0]) and evicted(k[1])
+        ]:
+            del self._separator_cache[sep_key]

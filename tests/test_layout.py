@@ -80,3 +80,30 @@ def test_discard_forgets_the_height_too() -> None:
     layout.store(7, 80, 0, _p(3))
     layout.discard(7)
     assert layout.last_known_height(7) is None
+
+
+def test_index_stays_in_sync_across_store_discard_release_retain() -> None:
+    # The per-entry index makes store/discard/release proportional to one
+    # entry's keys instead of the whole cache; it must not drift from _cache.
+    layout: FlowLayout[str] = FlowLayout()
+    layout.store(1, 80, 0, _p(3))
+    layout.store(1, 100, 0, _p(4))
+    layout.store(2, 80, 0, _p(2))
+
+    def consistent() -> bool:
+        indexed = {k for keys in layout._by_entry.values() for k in keys}
+        return indexed == set(layout._cache)
+
+    assert consistent()
+    layout.store(1, 80, 1, _p(5))          # supersede a revision
+    assert consistent() and len(layout) == 3
+    layout.release(1)
+    assert consistent() and len(layout) == 1
+    layout.store(1, 80, 2, _p(6))
+    layout.discard(1)
+    assert consistent() and len(layout) == 1
+    layout.store(3, 100, 0, _p(1))
+    layout.retain_width(80)
+    assert consistent()
+    layout.clear()
+    assert consistent() and layout._by_entry == {}

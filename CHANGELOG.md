@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.4] - 2026-08-11
+
+### Fixed
+
+- **The gutter and separator caches are released on leaving the band**, like
+  body strips already were (0.16.2). They're the same kind of per-frame paint
+  cache, but were only cleared on removal / decorator change / resize, so with a
+  decorator configured — the per-message state gutter, a headline feature —
+  memory still grew with every entry *visited*. Measured over 400 entries: gutter
+  cache **~visited count → 4** (the band).
+
+### Performance
+
+- **`Viewport.offset_of` is O(1)** instead of a linear scan over the entries. It
+  sits on the streaming path — every content change re-anchors the text cursor
+  through it — and the id index it needed already existed. At 10 000 entries:
+  **0.230 ms → 0.008 ms**.
+- **`FlowLayout` per-entry operations no longer scan the whole cache.** `store`
+  runs on every completed present *and* every `patch_rows` chunk, and `release`
+  on every off-screen update, but each scanned all cached keys to find the
+  entry's own. They now go through a per-entry index. At a 10 000-entry cache:
+  `store` **0.155 ms → 0.001 ms**, `release` **0.302 ms → 0.0001 ms**, and both
+  are now flat in cache size.
+
 ## [0.16.3] - 2026-08-11
 
 ### Fixed

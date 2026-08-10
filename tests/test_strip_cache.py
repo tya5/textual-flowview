@@ -196,3 +196,43 @@ async def test_released_entry_re_presents_correctly_on_scrollback() -> None:
             await pilot.pause()
         assert v._layout.get(first, v._body_width()) is not None
         assert "[img] e0" in "".join(seg.text for seg in v.render_line(0))
+
+
+@pytest.mark.asyncio
+async def test_gutter_and_separator_caches_are_bounded_too() -> None:
+    # The gutter and separator caches are the same kind of per-frame paint
+    # cache as strips, so they must be released on leaving the band as well.
+    from rich.rule import Rule
+
+    class Gutter:
+        def decorate(self, entry: object, width: int, height: int) -> Text:
+            return Text("*" * width)
+
+    model: FlowModel[str] = FlowModel()
+    for i in range(200):
+        model.append(f"e{i:03d}")
+
+    class DecoratedApp(App):
+        def compose(self) -> ComposeResult:
+            self.flow = FlowView(
+                model=model, presenter=TallPresenter(), spacing=1,
+                estimated_height=10, decorator=Gutter(), gutter_width=2,
+                separator=lambda a, b: Rule(),
+            )
+            yield self.flow
+
+    app = DecoratedApp()
+    async with app.run_test(size=(40, 20)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        for y in range(0, v.max_scroll_y, 20):
+            v.scroll_to(y=y, animate=False)
+            await pilot.pause()
+            for row in range(v.size.height):  # paint, filling gutter/separator caches
+                v.render_line(row)
+        await pilot.pause()
+        limit = len(v._band_ids) + 2  # + sticky slot / straddling separator
+        assert len(v._strip_cache) <= limit
+        assert len(v._gutter_cache) <= limit
+        assert len(v._separator_cache) <= limit

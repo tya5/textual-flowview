@@ -178,3 +178,18 @@ def test_scroll_to_entry_ensure_visible() -> None:
     vp.scroll_to_entry(entries[50])  # offset 250, ensure visible
     vr = vp.visible_range()
     assert entries[50] in vr.entries
+
+
+def test_offset_of_is_indexed_not_scanned() -> None:
+    # offset_of runs on the streaming path (every content change re-anchors the
+    # text cursor through it), so it resolves via the id index, not a scan.
+    model: FlowModel[str] = FlowModel()
+    entries = [model.append(f"e{i}") for i in range(50)]
+    vp: Viewport[str] = Viewport(layout=FlowLayout(), estimated_height=2, spacing=1)
+    vp.set_entries(entries)
+    for i, entry in enumerate(entries):
+        assert vp.offset_of(entry) == vp.offset_at(i)
+    # an entry the viewport doesn't hold (e.g. hidden) has no offset
+    vp.set_entries(entries[:10])
+    assert vp.offset_of(entries[20]) is None
+    assert vp.offset_of(entries[0]) == 0

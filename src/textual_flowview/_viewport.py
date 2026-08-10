@@ -256,12 +256,15 @@ class Viewport(Generic[T]):
         return prefix[index]
 
     def offset_of(self, entry: Entry[T]) -> int | None:
-        """Virtual y-offset of ``entry``'s top edge, or ``None`` if unknown."""
-        prefix = self._prefix()
-        for i, e in enumerate(self._entries):
-            if e is entry:
-                return prefix[i]
-        return None
+        """Virtual y-offset of ``entry``'s top edge, or ``None`` if unknown.
+
+        O(1) via the id index — this is on the streaming path (every content
+        change re-anchors the text cursor through it), so it must not scan.
+        """
+        index = self._index_of.get(entry.id)
+        if index is None:
+            return None
+        return self._prefix()[index]
 
     # -- visible range -----------------------------------------------------
 
