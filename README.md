@@ -57,7 +57,10 @@ laptop):
 The container mounts one widget per row — O(N) DOM, layout, and memory that grows
 with the list. FlowView **paints** the visible rows, so it is O(viewport): **one
 widget regardless of N**, a flat build and re-layout, and scrolling that stays
-smooth.
+smooth. Rendered rows are cached for what's on screen (plus overscan) and
+released once they scroll out, so the render cache stays O(viewport) too rather
+than growing with everything you've scrolled past; scrolling back re-renders them
+synchronously from the retained presentation (sub-millisecond, no placeholder).
 
 [`examples/compare.py`](examples/compare.py) shows it live with an FPS meter on the same 1500-row list.
 Flip `c` / `f` for the backend and `d` for the content:

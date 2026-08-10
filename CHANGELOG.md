@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.2] - 2026-08-11
+
+### Fixed
+
+- **The rendered-strip cache no longer grows with every entry ever scrolled
+  past.** Strips are a *per-frame* optimisation — `render_line` is row-granular
+  while rendering is entry-granular, so the cache collapses an entry's N
+  row-requests into one render. Off-band entries have no rows to collapse, but
+  their strips were never released (only on removal / resize / clear), so memory
+  tracked *entries visited* rather than what's on screen. They're now dropped
+  when an entry leaves the present band (visible + overscan + directional
+  read-ahead), which the view already computes on every scroll.
+
+  Measured on 500 entries × 10 rows, fully scrolled: strip cache **498 entries →
+  3**, and scrolling back repaints in **0.34 ms** showing real content — the
+  `Presentation` is retained, so strips re-render **synchronously** with no
+  placeholder and no re-`present`. The band is wider than the viewport, so
+  ordinary scrolling doesn't thrash, and a pinned sticky header keeps its strips
+  even when it sits above the band (it's composed every frame).
+
 ## [0.16.1] - 2026-08-08
 
 ### Fixed
