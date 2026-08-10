@@ -61,6 +61,8 @@ smooth. Rendered rows are cached for what's on screen (plus overscan) and
 released once they scroll out, so the render cache stays O(viewport) too rather
 than growing with everything you've scrolled past; scrolling back re-renders them
 synchronously from the retained presentation (sub-millisecond, no placeholder).
+See [docs/memory.md](docs/memory.md) for what's cached, what it costs, and the
+levers — worth a read if your entries carry images.
 
 [`examples/compare.py`](examples/compare.py) shows it live with an FPS meter on the same 1500-row list.
 Flip `c` / `f` for the backend and `d` for the content:
@@ -726,7 +728,8 @@ view.track_visibility(
 
 The superseded presentation is released immediately, even though the entry is
 off-screen when it happens, so the memory actually comes back (its height is
-remembered, so nothing on screen shifts).
+remembered, so nothing on screen shifts). See
+[docs/memory.md](docs/memory.md) for the full picture.
 
 > Interactive Textual **widgets** (`Button`, `Select`, `Input`) are a different
 > thing — FlowView paints renderables rather than mounting child widgets, so
