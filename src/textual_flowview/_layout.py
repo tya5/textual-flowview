@@ -91,6 +91,17 @@ class FlowLayout(Generic[T]):
             del self._cache[key]
         self._last_height.pop(entry_id, None)
 
+    def release(self, entry_id: int) -> None:
+        """Drop an entry's cached presentations but **keep its last-known
+        height** — for an entry that is still in the model but whose cached
+        render is now unreachable (e.g. its revision moved on while it was
+        off-screen). Retaining the height keeps the layout stable until it
+        re-presents; :meth:`discard` is the removal counterpart that forgets
+        both."""
+        stale = [key for key in self._cache if key[0] == entry_id]
+        for key in stale:
+            del self._cache[key]
+
     def retain_width(self, width: int) -> None:
         """Drop presentations produced for any width other than ``width``.
 

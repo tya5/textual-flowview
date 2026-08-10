@@ -103,3 +103,96 @@ async def test_sticky_header_strips_survive_the_trim() -> None:
         await pilot.pause()
         assert header.id not in v._band_ids       # header is outside the band...
         assert header.id in v._strip_cache        # ...but its strips are kept
+
+
+class Swappable:
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.heavy = True
+
+
+class SwapPresenter:
+    async def present(self, item: Swappable, width: int) -> Presentation:
+        if item.heavy:
+            return Presentation(
+                height=10,
+                renderable=Text("\n".join(f"{item.name} heavy {i}" for i in range(10))),
+            )
+        return Presentation(height=1, renderable=Text(f"[img] {item.name}"))
+
+
+@pytest.mark.asyncio
+async def test_offscreen_update_releases_the_superseded_presentation() -> None:
+    # Shedding a heavy body (swap the item for a light one, then update()) must
+    # actually free it. That necessarily happens while the entry is off-screen —
+    # where the update is deferred — so the superseded presentation has to be
+    # released there, not kept until the entry is next visited.
+    model: FlowModel[Swappable] = FlowModel()
+    entries = [model.append(Swappable(f"e{i}")) for i in range(60)]
+
+    class SwapApp(App):
+        def compose(self) -> ComposeResult:
+            self.flow = FlowView(
+                model=model, presenter=SwapPresenter(), spacing=0, estimated_height=10
+            )
+            yield self.flow
+
+    app = SwapApp()
+    async with app.run_test(size=(40, 20)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        for y in range(0, v.max_scroll_y, 20):
+            v.scroll_to(y=y, animate=False)
+            await pilot.pause()
+        await pilot.pause()
+        assert len(v._layout) == 60          # every visited entry is cached
+        heights = {e.id: v._layout.last_known_height(e.id) for e in entries}
+
+        off = [e for e in entries if e.id not in v._band_ids]
+        for e in off:
+            e.item.heavy = False
+            e.update()
+        await pilot.pause()
+        await pilot.pause()
+
+        # the superseded presentations are gone, not left as stale-revision junk
+        assert len(v._layout) <= len(v._band_ids) + 1
+        current = {e.id: e.revision for e in entries}
+        stale = [k for k in v._layout._cache if k[2] != current.get(k[0])]
+        assert stale == []
+        # ...while the layout stays put: heights are remembered
+        for e in off:
+            assert v._layout.last_known_height(e.id) == heights[e.id]
+
+
+@pytest.mark.asyncio
+async def test_released_entry_re_presents_correctly_on_scrollback() -> None:
+    model: FlowModel[Swappable] = FlowModel()
+    entries = [model.append(Swappable(f"e{i}")) for i in range(60)]
+
+    class SwapApp(App):
+        def compose(self) -> ComposeResult:
+            self.flow = FlowView(
+                model=model, presenter=SwapPresenter(), spacing=0, estimated_height=10
+            )
+            yield self.flow
+
+    app = SwapApp()
+    async with app.run_test(size=(40, 20)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        v.scroll_to(y=v.max_scroll_y, animate=False)
+        await pilot.pause()
+        await pilot.pause()
+        first = entries[0]
+        first.item.heavy = False       # lighten the (off-screen) first entry
+        first.update()
+        await pilot.pause()
+
+        v.scroll_to(y=0, animate=False)   # scroll back: it re-presents from the item
+        for _ in range(6):
+            await pilot.pause()
+        assert v._layout.get(first, v._body_width()) is not None
+        assert "[img] e0" in "".join(seg.text for seg in v.render_line(0))

@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.3] - 2026-08-11
+
+### Fixed
+
+- **An off-screen `update()` now releases the superseded presentation.** The
+  revision bump already made the cached render unreachable, but the deferred
+  (off-band) update path left it in the cache until the entry was next
+  presented — so memory was only reclaimed by scrolling *back* to the entry.
+
+  That defeated the natural way to shed a heavy body: swap the item for a light
+  one and `update()` from a `track_visibility` `on_hide` — which by definition
+  runs while the entry is off-screen. Measured on 60 heavy entries: lightening
+  the 55 off-screen ones left **55 stale presentations** cached; now **0**, and
+  the layout cache drops to the band. Last-known heights are kept, so nothing on
+  screen shifts (`FlowLayout.release` vs the removal-time `discard`).
+
+  This matters because FlowView can't see inside a renderable — it can't tell an
+  image-bearing entry from a text one — so trimming heavy bodies is necessarily
+  the consumer's call; this makes the consumer's existing lever actually free the
+  memory. Documented in the README's viewport-scoped resources section.
+
 ## [0.16.2] - 2026-08-11
 
 ### Fixed

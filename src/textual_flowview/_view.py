@@ -604,6 +604,15 @@ class FlowView(ScrollView, Generic[T]):
             # miss, so the entry re-presents (and reflows) lazily when it scrolls
             # into view — no wasted work for an update no one can see. Its layout
             # keeps its last-known height until then, so nothing on screen shifts.
+            #
+            # Release the superseded presentation now, though: the revision bump
+            # already made it unreachable, and without this it would sit in the
+            # cache until the entry is next presented — i.e. memory is only
+            # reclaimed once you scroll back to it. That defeats the natural way
+            # to shed a heavy body (swap the item for a light one and update()
+            # from a `track_visibility` on_hide), which necessarily runs while
+            # the entry is off-screen.
+            self._layout.release(entry.id)
             return
         state = self._capture()
         self._refresh_layout(state, dirty_entry=entry)

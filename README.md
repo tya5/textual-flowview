@@ -710,6 +710,24 @@ Use it for anything scoped to visibility — a data subscription, a video, a
 lazily-loaded image, a timer. Returns a `VisibilityHandle`; `.stop()`
 unregisters (releasing if currently shown).
 
+**Shedding a heavy body off-screen.** FlowView can't see *inside* a renderable —
+it doesn't know which entries carry an image — so which bodies are expensive is
+yours to decide. The lever is the ordinary one: swap the item for a light version
+and `update()`. Paired with `track_visibility`, a scrolled-past image degrades to
+a caption and comes back when you return to it:
+
+```python
+view.track_visibility(
+    entry,
+    on_hide=lambda e: (e.item.drop_image(), e.update()),     # -> "🖼 chart.png"
+    on_show=lambda e: (e.item.restore_image(), e.update()),
+)
+```
+
+The superseded presentation is released immediately, even though the entry is
+off-screen when it happens, so the memory actually comes back (its height is
+remembered, so nothing on screen shifts).
+
 > Interactive Textual **widgets** (`Button`, `Select`, `Input`) are a different
 > thing — FlowView paints renderables rather than mounting child widgets, so
 > those aren't hosted per entry. For clickable controls, draw them and hit-test
