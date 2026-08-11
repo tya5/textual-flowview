@@ -288,6 +288,7 @@ class FlowView(ScrollView, Generic[T]):
         cursor: bool = False,
         cursor_scrolloff: int = 0,
         clipboard: Callable[[str], bool | None] | None = None,
+        search_text: Callable[[T], str] | None = None,
         sticky_header: Callable[[Entry[T]], bool] | None = None,
         anchor: Anchor = Anchor.CURRENT,
         estimated_height: int = 1,
@@ -309,6 +310,12 @@ class FlowView(ScrollView, Generic[T]):
         super().__init__(name=name, id=id, classes=classes)
         self._model = model
         self._presenter = presenter
+        # Optional item -> searchable text. FlowView can't read an item (it only
+        # ever sees the Presentation a presenter produced), and an entry that has
+        # never scrolled into view has no presentation at all — so without this,
+        # text search can only see what has already been rendered. Supplying it
+        # makes search cover the whole model.
+        self._search_text = search_text
         # Left and right gutters are independent: each has its own decorator and
         # width. `decorator`/`gutter_width` are the left gutter (unchanged);
         # `right_decorator`/`right_gutter_width` add an optional right one.
@@ -1127,52 +1134,135 @@ class FlowView(ScrollView, Generic[T]):
                 return text[start : end + 1]
         return ""
 
-    def search(self, query: str, *, forward: bool = True) -> bool:
+    async def search(self, query: str, *, forward: bool = True) -> bool:
         """Search the content for ``query`` and move the cursor to the next
         occurrence (wrapping). Returns whether a match was found; remembers the
-        query for :meth:`search_next` / :meth:`search_previous`."""
+        query for :meth:`search_next` / :meth:`search_previous`.
+
+        With ``search_text=`` configured the whole model is searched, including
+        entries that have never been on screen; without it only what has already
+        been rendered can be seen (see :meth:`_search_entries`)."""
         if not query:
             return False
         self._search_query = query
-        return self._do_search(query, forward=forward)
+        return await self._do_search(query, forward=forward)
 
-    def search_selection(self) -> bool:
+    async def search_selection(self) -> bool:
         """Search for the current visual selection (or, with no selection, the
         word under the cursor) — vim ``*``."""
         query = self.screen.get_selected_text() if self._tc_anchor is not None else ""
         query = (query or self._current_word()).strip("\n")
-        return self.search(query, forward=True)
+        return await self.search(query, forward=True)
 
-    def search_next(self) -> bool:
-        return self._do_search(self._search_query, forward=True)
+    async def search_next(self) -> bool:
+        return await self._do_search(self._search_query, forward=True)
 
-    def search_previous(self) -> bool:
-        return self._do_search(self._search_query, forward=False)
+    async def search_previous(self) -> bool:
+        return await self._do_search(self._search_query, forward=False)
 
-    def _do_search(self, query: str, *, forward: bool) -> bool:
-        n = self.row_count
-        if not query or n == 0:
+    async def _do_search(self, query: str, *, forward: bool) -> bool:
+        if not query or self.row_count == 0:
             return False
-        row, col = self._tc_row, self._tc_col
+        if self._search_text is not None:
+            return await self._search_entries(query, forward=forward)
+        return self._search_rendered_rows(query, forward=forward)
+
+    def _rows_from_cursor(self, forward: bool) -> Iterator[int]:
+        """Row indices to examine, in search order, wrapping back to the cursor.
+        Lazy: a match on the next row costs one row, not a scan of the whole
+        document."""
+        n = self.row_count
+        row = self._tc_row
         if forward:
-            order = (
-                [(row, self.row_text(row).find(query, col + 1))]
-                + [(r, self.row_text(r).find(query)) for r in range(row + 1, n)]
-                + [(r, self.row_text(r).find(query)) for r in range(0, row + 1)]
-            )
+            yield from range(row, n)
+            yield from range(0, row + 1)
         else:
-            order = (
-                [(row, self.row_text(row).rfind(query, 0, col))]
-                + [(r, self.row_text(r).rfind(query)) for r in range(row - 1, -1, -1)]
-                + [(r, self.row_text(r).rfind(query)) for r in range(n - 1, row - 1, -1)]
-            )
-        for r, c in order:
-            if c != -1:
-                self._tc_row, self._tc_col = r, c
-                self._tc_anchor = None  # land on the match (like vim search)
-                self._render_cursor()
-                return True
+            yield from range(row, -1, -1)
+            yield from range(n - 1, row - 1, -1)
+
+    def _find_in_row(self, row: int, query: str, *, forward: bool, first: bool) -> int:
+        """Column of ``query`` in ``row``, or -1. On the cursor's own row the
+        search starts just past the cursor so repeat-search advances."""
+        text = self.row_text(row)
+        if not first:
+            return text.find(query) if forward else text.rfind(query)
+        return (
+            text.find(query, self._tc_col + 1)
+            if forward
+            else text.rfind(query, 0, self._tc_col)
+        )
+
+    def _land_on(self, row: int, col: int) -> bool:
+        self._tc_row, self._tc_col = row, col
+        self._tc_anchor = None  # land on the match (like vim search)
+        self._render_cursor()
+        return True
+
+    def _search_rendered_rows(self, query: str, *, forward: bool) -> bool:
+        """Fallback with no ``search_text``: scan the rows as rendered. Only sees
+        entries that have been presented — an entry never scrolled to renders as
+        the placeholder, so its content is invisible here."""
+        for i, row in enumerate(self._rows_from_cursor(forward)):
+            col = self._find_in_row(row, query, forward=forward, first=i == 0)
+            if col != -1:
+                return self._land_on(row, col)
         return False
+
+    async def _search_entries(self, query: str, *, forward: bool) -> bool:
+        """Search the whole model via ``search_text``, then resolve the exact
+        row/column inside the matching entry.
+
+        The cheap text comes from the item, so entries that have never been
+        rendered are searched too — and nothing is presented just to look at it.
+        Only the entry that matches is presented (awaited), to map the hit onto
+        rendered rows."""
+        assert self._search_text is not None
+        entries = self._viewport.entries
+        count = len(entries)
+        if count == 0:
+            return False
+        current = self.entry_at_row(self._tc_row)
+        start = (current and self._viewport.index_of(current)) or 0
+        # Walk outwards from the cursor's entry, wrapping; the extra step
+        # revisits the starting entry so a match behind the cursor is found last.
+        step = 1 if forward else -1
+        for n in range(count + 1):
+            index = (start + step * n) % count
+            entry = entries[index]
+            if query not in self._search_text(entry.item):
+                continue
+            await self._ensure_presented(entry)
+            offset = self._viewport.offset_of(entry)
+            if offset is None:
+                continue
+            height = self._viewport.height_of(entry)
+            rows = range(offset, offset + height)
+            if not forward:
+                rows = range(offset + height - 1, offset - 1, -1)
+            for r in rows:
+                # only the cursor's own entry resumes from the cursor column
+                first = n == 0 and entry is current and r == self._tc_row
+                col = self._find_in_row(r, query, forward=forward, first=first)
+                if col != -1:
+                    self.ensure_visible(entry)
+                    return self._land_on(r, col)
+        return False
+
+    async def _ensure_presented(self, entry: Entry[T]) -> None:
+        """Present ``entry`` now, if it isn't already, and cache the result —
+        so a search hit can be located in real rendered rows rather than the
+        placeholder."""
+        width = self._body_width()
+        if width <= 0 or self._layout.get(entry, width) is not None:
+            return
+        revision = entry.revision
+        try:
+            presentation = await self._presenter.present(entry.item, width)
+        except Exception as exc:  # mirror the present loop's error handling
+            presentation = self._error_presentation(exc)
+        if entry.alive:
+            self._layout.store(entry.id, width, revision, presentation)
+            self._refresh_layout(self._capture(), dirty_entry=entry)
 
     def cursor_scroll_center(self) -> None:
         self.scroll_to(y=self._tc_row - self.content_size.height // 2, animate=False)
@@ -1362,14 +1452,14 @@ class FlowView(ScrollView, Generic[T]):
     def action_cursor_entry_end(self) -> None:
         self.cursor_entry_end()
 
-    def action_search_selection(self) -> None:
-        self.search_selection()
+    async def action_search_selection(self) -> None:
+        await self.search_selection()
 
-    def action_search_next(self) -> None:
-        self.search_next()
+    async def action_search_next(self) -> None:
+        await self.search_next()
 
-    def action_search_previous(self) -> None:
-        self.search_previous()
+    async def action_search_previous(self) -> None:
+        await self.search_previous()
 
     def action_cursor_word_forward(self) -> None:
         self.cursor_word_forward()

@@ -255,6 +255,10 @@ class Viewport(Generic[T]):
             return 0
         return prefix[index]
 
+    def index_of(self, entry: Entry[T]) -> int | None:
+        """Position of ``entry`` in the visible entry list, or ``None``. O(1)."""
+        return self._index_of.get(entry.id)
+
     def offset_of(self, entry: Entry[T]) -> int | None:
         """Virtual y-offset of ``entry``'s top edge, or ``None`` if unknown.
 

@@ -204,3 +204,100 @@ async def test_stop_scroll_animation_stays_put() -> None:
         view.stop_scroll_animation()
         await pilot.pause()
         assert round(view.scroll_offset.y) == final
+
+
+class CountingPresenter:
+    """Counts present() calls so a test can prove search doesn't render the
+    whole model just to look at it."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def present(self, item: Row, width: int) -> Presentation:
+        self.calls += 1
+        return Presentation(height=1, renderable=Text(item.text))
+
+
+def _text_app(n: int, needle_at_end: bool, **kw: object) -> App:
+    model: FlowModel[Row] = FlowModel()
+    for i in range(n):
+        model.append(Row(f"line {i:04d} alpha"))
+    if needle_at_end:
+        model.append(Row("the NEEDLE is here"))
+
+    class SearchApp(App):
+        def compose(self) -> ComposeResult:
+            self.presenter = CountingPresenter()
+            self.flow = FlowView(
+                model=model, presenter=self.presenter, spacing=0,
+                estimated_height=1, cursor=True, **kw,  # type: ignore[arg-type]
+            )
+            yield self.flow
+
+    return SearchApp()
+
+
+@pytest.mark.asyncio
+async def test_search_finds_text_in_entries_never_rendered() -> None:
+    # With search_text, the whole model is searchable — an entry that has never
+    # scrolled into view has no presentation, so without it search would only
+    # see the placeholder and silently miss the match.
+    app = _text_app(500, needle_at_end=True, search_text=lambda item: item.text)
+    async with app.run_test(size=(40, 10)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        v.focus()
+        assert v.row_text(v.row_count - 1) == "Loading..."  # never presented
+        assert await v.search("NEEDLE") is True
+        assert "NEEDLE" in v.row_text(v._tc_row)             # cursor is on the match
+
+
+@pytest.mark.asyncio
+async def test_search_presents_only_the_matching_entry() -> None:
+    app = _text_app(500, needle_at_end=True, search_text=lambda item: item.text)
+    async with app.run_test(size=(40, 10)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        v.focus()
+        before = app.presenter.calls
+        assert await v.search("NEEDLE") is True
+        assert app.presenter.calls - before == 1        # just the hit, not 500
+        # a miss renders nothing at all
+        before = app.presenter.calls
+        assert await v.search("NOTHERE") is False
+        assert app.presenter.calls == before
+
+
+@pytest.mark.asyncio
+async def test_search_advances_and_wraps() -> None:
+    app = _text_app(200, needle_at_end=False, search_text=lambda item: item.text)
+    async with app.run_test(size=(40, 10)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        v.focus()
+        assert await v.search("alpha") is True
+        first = v._tc_row
+        assert await v.search_next() is True
+        assert v._tc_row > first                        # moved forward
+        assert await v.search_previous() is True
+        assert v._tc_row == first                       # and back
+        # a query only in the last entry is reachable by wrapping backwards
+        assert await v.search("line 0199", forward=False) is True
+        assert "line 0199" in v.row_text(v._tc_row)
+
+
+@pytest.mark.asyncio
+async def test_search_without_search_text_sees_only_rendered_rows() -> None:
+    # The documented fallback: no search_text means search can only see what has
+    # been presented.
+    app = _text_app(500, needle_at_end=True)
+    async with app.run_test(size=(40, 10)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        v.focus()
+        assert await v.search("NEEDLE") is False    # off-screen, never rendered
+        assert await v.search("line 0001") is True  # on screen, rendered

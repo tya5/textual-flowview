@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-08-11
+
+### Fixed
+
+- **Text search no longer silently misses matches.** It read rows through the
+  render path, so an entry that had never scrolled into view returned the
+  *placeholder* (`"Loading..."`) rather than its content — searching a long
+  transcript quietly found nothing beyond what you had already looked at. It was
+  also eager (it evaluated every row in the document before checking any) and
+  presented every entry as a side effect: a match on the *next row* cost 441 ms
+  over a 10 000-row document.
+
+### Added
+
+- **`FlowView(search_text=lambda item: ...)`** makes the whole model searchable.
+  FlowView only ever sees the `Presentation` a presenter produced, so it cannot
+  read an un-presented entry; given a way to read the item it finds the matching
+  *entry* cheaply and presents **only that one** to resolve the exact row and
+  column. Measured over 2 000 entries: a never-visited match at the end goes from
+  *not found in 579 ms* to **found in 1.0 ms with a single present**, a match on
+  the next row from 441 ms to **0.3 ms**, and a miss from 465 ms (plus presenting
+  the whole model) to **0.3 ms with nothing rendered**.
+
+  Without it, search keeps the previous behaviour — rendered rows only — now
+  evaluated lazily, and this limitation is documented.
+
+### Changed
+
+- `search`, `search_next`, `search_previous` and `search_selection` are now
+  **`async`** (a match may need its entry presented first). The default key
+  bindings are unaffected.
+
 ## [0.16.4] - 2026-08-11
 
 ### Fixed

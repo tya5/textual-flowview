@@ -554,9 +554,24 @@ copy, and the sink's result is observable.
 **Search the selection.** `search_selection()` (default `*`) searches for the
 current visual selection — or the word under the cursor if there's no selection —
 and jumps to the next occurrence; `search_next()` / `search_previous()` (`n` /
-`N`) repeat, wrapping. `search(query)` searches an arbitrary string. (This is a
-*text* search over the content; the entry-level `find` / `find_next` by predicate
-is separate.)
+`N`) repeat, wrapping. `search(query)` searches an arbitrary string. They're
+`async` (a match may need its entry presented first). This is a *text* search
+over the content; the entry-level `find` / `find_next` by predicate is separate.
+
+**Give search the whole model with `search_text=`.** FlowView only ever sees the
+`Presentation` a presenter produced, and an entry that has never scrolled into
+view has none — so by default a text search can only see rows that have already
+been rendered, and silently misses matches further down a long transcript. Hand
+it a way to read an item and the whole model becomes searchable:
+
+```python
+FlowView(model=..., presenter=..., search_text=lambda msg: msg.text)
+```
+
+It's used to find the matching *entry* (cheap, no rendering), and only that entry
+is then presented to locate the exact row and column — a miss renders nothing at
+all. Return what the body renders: anything your presenter adds that isn't in the
+returned string won't be found.
 
 `cursor_scrolloff` keeps N rows of context above/below the cursor (vim
 `scrolloff`); the view scrolls early to preserve it. It's capped at half the
