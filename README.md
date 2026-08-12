@@ -594,12 +594,39 @@ one, it collapses to zero rows in a bare `Static` — just work in a `FlowView`.
 You tell FlowView the height; there's no per-widget `styles.height` to remember.
 
 **Images** are just renderables too, so they compose with text in one entry
-(`Group` to stack, `Table.grid` / `Columns` for an avatar beside a message). On
-Kitty / WezTerm they're **real pixels** — [textual-image](https://github.com/lnqs/textual-image)'s
-renderable uses the Kitty graphics protocol in *Unicode-placeholder* mode, which
-is cell-based, so it virtualizes and clips correctly as the feed scrolls; other
-terminals fall back to a half-block approximation automatically. See
+(`Group` to stack, `Table.grid` / `Columns` for an avatar beside a message). See
 [`examples/image.py`](examples/image.py) (avatars + text, an inline picture).
+
+> ⚠️ **Pick a cell-based image renderable — Sixel does not work here.** FlowView
+> paints rows as cells and repaints them independently as you scroll, so it can
+> only place an image that *occupies cells*:
+>
+> | Renderable | In the row | In FlowView |
+> | :- | :- | :- |
+> | Kitty graphics, **Unicode-placeholder** mode (`textual_image.renderable.tgp`) | placeholder cells | ✅ real pixels, positioned and clipped correctly |
+> | Half-block / Unicode (`…renderable.halfcell`, [rich-pixels](https://github.com/darrenburns/rich-pixels)) | coloured cells | ✅ works everywhere, approximate |
+> | **Sixel** (`…renderable.sixel`) | **nothing — zero cells** | ❌ FlowView can't know where it is: wrong position, no clipping |
+>
+> Sixel draws pixels relative to the cursor rather than into cells, so a
+> virtualized painter has no way to place or clip it. Measured: a Sixel
+> renderable produces **0 cells and 0 characters** in the rendered row, while the
+> Kitty placeholder mode produces 120 placeholder cells for the same image.
+>
+> **This matters because `textual_image.renderable.Image` auto-selects Sixel
+> first** where the terminal supports it (WezTerm, Konsole, xterm …), so the
+> auto-detecting import breaks on exactly those terminals. Import the renderable
+> you want instead:
+>
+> ```python
+> try:                       # real pixels where supported…
+>     from textual_image.renderable.tgp import Image as ImageRenderable
+> except ImportError:
+>     from textual_image.renderable.halfcell import Image as ImageRenderable
+> ```
+>
+> (Kitty supports the placeholder mode; on terminals that report Kitty-graphics
+> support but not placeholders, use the half-block renderable. Sixel-only
+> terminals get the half-block approximation.)
 
 An **animated GIF** is just image frames advanced on a timer — pair the image
 renderable with `animate_entry`, which ticks only while the entry is on screen

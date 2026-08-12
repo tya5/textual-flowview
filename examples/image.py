@@ -7,13 +7,17 @@ sits under a picture via `Group`. The image is a Rich renderable
 `Presentation` — no FlowView changes, and it **virtualizes and scrolls** like any
 row.
 
-On Kitty / WezTerm the avatars are **real pixels** (Kitty Terminal Graphics
-Protocol, Unicode-placeholder mode — cell-based, so it clips correctly as you
-scroll); on other terminals textual-image falls back to a Unicode half-block
-approximation automatically.
+⚠️ The image renderable is chosen **explicitly**, not via
+`textual_image.renderable.Image`. That auto-selects **Sixel** first wherever the
+terminal supports it, and Sixel cannot work in a virtualized painter: it draws
+pixels relative to the cursor instead of occupying cells, so the rendered row
+contains *zero cells* and FlowView has no way to position or clip it (measured:
+0 cells for Sixel vs 120 placeholder cells for the Kitty renderable). Prefer the
+Kitty graphics *Unicode-placeholder* renderable — cell-based, so it clips
+correctly as you scroll — and fall back to half-blocks, which work anywhere.
 
 Requires:  pip install textual-image pillow
-Run:       PYTHONPATH=src python examples/image.py     (best in Kitty or WezTerm)
+Run:       PYTHONPATH=src python examples/image.py     (real pixels in Kitty)
 """
 
 from __future__ import annotations
@@ -30,7 +34,10 @@ from textual_flowview import FlowModel, FlowView, Presentation
 try:
     from PIL import Image as PILImage
     from PIL import ImageDraw
-    from textual_image.renderable import Image as AutoImage  # auto-detects protocol
+
+    # Cell-based renderables ONLY — see the note above. `textual_image.renderable
+    # .Image` would auto-select Sixel, which a virtualized painter cannot place.
+    from textual_image.renderable.tgp import Image as CellImage
 except ModuleNotFoundError:  # pragma: no cover
     raise SystemExit(
         "This example needs textual-image + pillow:  pip install textual-image pillow"
@@ -78,7 +85,7 @@ class MessagePresenter:
     async def present(self, item: Message, width: int) -> Presentation:
         style = f"bold rgb({item.color[0]},{item.color[1]},{item.color[2]})"
         # avatar (3 cell-rows) beside name + body — one entry, image + text mixed
-        avatar = AutoImage(item.avatar(), width=6, height=3)
+        avatar = CellImage(item.avatar(), width=6, height=3)
         text = Group(Text(item.name, style=style), Text(item.body, style="grey85"))
         grid = Table.grid(padding=(0, 1))
         grid.add_column()          # avatar
@@ -88,7 +95,7 @@ class MessagePresenter:
         body: RenderableType = grid
         if item.picture:
             # a wide picture with a caption underneath, stacked vertically
-            pic = AutoImage(_picture(160, 60), width=max(1, width - 8), height=8)
+            pic = CellImage(_picture(160, 60), width=max(1, width - 8), height=8)
             body = Group(grid, Text(""), pic, Text("↑ an inline picture", style="grey50"))
 
         height = len(self._probe.render_lines(body, self._probe.options.update_width(width)))

@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-08-13
+
+### Documentation
+
+- **Say which image renderables work — Sixel does not.** FlowView paints rows as
+  cells and repaints them independently while scrolling, so it can only place an
+  image that *occupies cells*. Measured for the same image: the Kitty
+  Unicode-placeholder renderable puts **120 placeholder cells** in the row, while
+  the Sixel renderable puts **0 cells and 0 characters** there — Sixel draws
+  relative to the cursor rather than into cells, so a virtualized painter has no
+  way to position or clip it, and the image lands in the wrong place.
+
+  This matters because `textual_image.renderable.Image` **auto-selects Sixel
+  first** wherever the terminal supports it (WezTerm, Konsole, xterm …), so the
+  convenient auto-detecting import is exactly the one that breaks — as a consumer
+  reported. The README now states the supported/unsupported matrix and shows
+  importing the cell-based renderable explicitly.
+
+### Fixed
+
+- `examples/image.py` imported the auto-detecting renderable and so would have
+  rendered mispositioned images on Sixel-capable terminals. It now imports the
+  Kitty Unicode-placeholder renderable explicitly (verified: 456 placeholder
+  cells painted, where Sixel would paint none).
+
 ## [0.18.0] - 2026-08-13
 
 ### Changed
