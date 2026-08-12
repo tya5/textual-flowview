@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+import inspect
+from collections.abc import Awaitable, Callable, Iterator
 from typing import Any, ClassVar, Generic, Literal, TypeVar
 
 from rich.cells import cell_len
@@ -287,7 +288,7 @@ class FlowView(ScrollView, Generic[T]):
         selectable: bool = False,
         cursor: bool = False,
         cursor_scrolloff: int = 0,
-        clipboard: Callable[[str], bool | None] | None = None,
+        clipboard: Callable[[str], bool | None | Awaitable[bool | None]] | None = None,
         search_text: Callable[[T], str] | None = None,
         sticky_header: Callable[[Entry[T]], bool] | None = None,
         anchor: Anchor = Anchor.CURRENT,
@@ -1100,28 +1101,37 @@ class FlowView(ScrollView, Generic[T]):
             self._tc_line_visual = True
         self._render_cursor()
 
-    def write_clipboard(self, text: str) -> bool:
+    async def write_clipboard(self, text: str) -> bool:
         """Send ``text`` to the clipboard, returning whether it was written.
 
         The default uses Textual's ``App.copy_to_clipboard`` — the terminal's
         **OSC 52** escape, which does *not* work on macOS Terminal and can be
         swallowed by tmux/ssh, with **no acknowledgement** (so the default
-        optimistically returns ``True``). Pass ``clipboard=`` (a
-        ``Callable[[str], bool | None]``) or override this to plug in a reliable
-        local sink (``pbcopy`` / ``xclip`` / ``wl-copy``) whose result *can* be
-        observed — a per-view seam, so you needn't override app-wide copy."""
+        optimistically returns ``True``). Pass ``clipboard=`` or override this to
+        plug in a reliable local sink (``pbcopy`` / ``xclip`` / ``wl-copy``)
+        whose result *can* be observed — a per-view seam, so you needn't
+        override app-wide copy.
+
+        The hook may be **sync or async**: return an awaitable and it is awaited,
+        so a sink that shells out can use ``asyncio.create_subprocess_exec``
+        instead of blocking the UI for the lifetime of that process. (A sync hook
+        can't avoid blocking here, because its result is reported back to the
+        caller — it can't be fired and forgotten.)"""
         if self._clipboard is not None:
-            return bool(self._clipboard(text))
+            result = self._clipboard(text)
+            if inspect.isawaitable(result):
+                result = await result
+            return bool(result)
         self.app.copy_to_clipboard(text)
         return True
 
-    def yank(self) -> str:
+    async def yank(self) -> str:
         """Copy the current selection to the clipboard and return it; clears the
         visual selection. Routes through
         :meth:`write_clipboard` (OSC 52 by default — see its caveats)."""
         text = self.screen.get_selected_text() or ""
         if text:
-            self.write_clipboard(text)
+            await self.write_clipboard(text)
         self._tc_anchor = None
         self._tc_line_visual = False
         self._render_cursor()
@@ -1476,8 +1486,8 @@ class FlowView(ScrollView, Generic[T]):
     def action_visual_line(self) -> None:
         self.visual_line()
 
-    def action_yank(self) -> None:
-        self.yank()
+    async def action_yank(self) -> None:
+        await self.yank()
 
     def action_cursor_scroll_line_down(self) -> None:
         self.cursor_scroll_line_down()
@@ -1550,6 +1560,17 @@ class FlowView(ScrollView, Generic[T]):
                 on_show=lambda e: e.item.stream.subscribe(),
                 on_hide=lambda e: e.item.stream.unsubscribe(),
             )
+
+        Both run **on the event loop** and their return value is not used, so
+        they are never awaited: anything slow (a network call, a file read, a
+        subprocess) must be started rather than waited for, or the UI blocks
+        while it runs::
+
+            on_show=lambda e: view.run_worker(load(e), exclusive=True)
+
+        Scheduling stays yours on purpose — a show can be followed by a hide
+        before the work lands, and only you know whether to cancel, ignore or
+        serialise that. See ``docs/event-loop.md``.
 
         Returns a :class:`VisibilityHandle`; call ``.stop()`` to unregister.
         """
@@ -1689,6 +1710,12 @@ class FlowView(ScrollView, Generic[T]):
 
         Registering again for the same entry replaces the previous animation;
         it is dropped automatically when the entry is removed.
+
+        ``callback`` runs **on the event loop** and is not awaited, so it must
+        return promptly — it fires every ``interval`` while the entry is on
+        screen, so blocking here stalls the UI repeatedly. Start slow work
+        instead of waiting for it (``view.run_worker(...)``); see
+        ``docs/event-loop.md``.
         """
         self._stop_animation(entry.id)
         timer = self.set_interval(interval, lambda: self._fire_animation(entry.id))

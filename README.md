@@ -727,6 +727,19 @@ Use it for anything scoped to visibility — a data subscription, a video, a
 lazily-loaded image, a timer. Returns a `VisibilityHandle`; `.stop()`
 unregisters (releasing if currently shown).
 
+> **These run on the event loop and are not awaited**, so anything slow must be
+> *started*, not waited for — `on_show=lambda e: view.run_worker(load(e),
+> exclusive=True)` — or the UI blocks while it runs. Scheduling stays yours
+> because a show can be followed by a hide before the work lands, and only you
+> know whether to cancel or ignore it.
+>
+> More generally: FlowView's **messages** (`Highlighted`, `Selected`, `Clicked`,
+> `ReachedTop`/`Bottom`, …) may be handled with `async def` and run off
+> FlowView's call stack — that's where slow, reactive work belongs. Its
+> **callbacks** run inline and are synchronous, except `present` and `clipboard`.
+> [docs/event-loop.md](docs/event-loop.md) has the full table, how hot each hook
+> is, and what to do about slow work.
+
 **Shedding a heavy body off-screen.** FlowView can't see *inside* a renderable —
 it doesn't know which entries carry an image — so which bodies are expensive is
 yours to decide. The lever is the ordinary one: swap the item for a light version

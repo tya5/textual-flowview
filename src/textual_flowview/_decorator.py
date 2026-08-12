@@ -29,6 +29,14 @@ class FlowDecorator(Protocol[T]):
     returns a renderable sized to ``width`` (the gutter width) by ``height``
     (the entry's body height in rows).
 
+    It runs **on the event loop, inside painting**, which has to produce a row
+    synchronously — so it cannot be async and cannot wait for anything. Whatever
+    it draws must already be in memory. If the gutter wants data it doesn't have,
+    draw a placeholder, fetch it off the paint path (e.g.
+    ``view.run_worker(...)`` from a :meth:`~FlowView.track_visibility` hook), and
+    call :meth:`~FlowView.refresh_gutter` when it lands. Blocking here freezes
+    the UI on every repaint; see ``docs/event-loop.md``.
+
     Two properties of the contract are load-bearing for multi-line gutters:
 
     * ``height`` is **post-wrap** — the body's presented height *at the current

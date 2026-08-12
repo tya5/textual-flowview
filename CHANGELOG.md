@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-08-13
+
+### Changed
+
+- **`clipboard=` accepts a sync *or* async hook**, and `write_clipboard` / `yank`
+  are now `async` accordingly (the "await me maybe" pattern). A sink that shells
+  out to `pbcopy` / `xclip` can `await asyncio.create_subprocess_exec(...)`
+  instead of blocking the UI for the lifetime of that process. This is the one
+  callback FlowView reports a result back from, so it can't be fired and
+  forgotten — every other slow-work hook can be scheduled by the caller. Default
+  key bindings are unaffected.
+
+### Documentation
+
+- **Corrected a false promise in `FlowPresenter`.** Its docstring claimed
+  presentation "runs inside a Textual worker so a slow presenter never blocks the
+  UI". A worker is an `asyncio` task on the *same* loop, so a CPU-bound
+  `present` — the usual shape, since rendering is pure CPU — holds the loop and
+  freezes the UI. Measured: four 250 ms presents starved a 10 ms heartbeat to 10
+  ticks where a free loop manages ~121. This is precisely the trap a consumer hit
+  and reported (#10); the docs were pointing the wrong way.
+- New **`docs/event-loop.md`**: where slow work belongs. FlowView has two kinds of
+  extension point and they differ completely — **messages** (`Highlighted`,
+  `Selected`, `Clicked`, `ReachedTop`/`Bottom`, …) may be handled with `async def`
+  and run *off* FlowView's call stack, so that is where slow reactive work goes;
+  **callbacks** run inline and are synchronous apart from `present` and
+  `clipboard`. Includes a per-hook table (async? how hot?), the measured
+  difference between `await`ing and merely "being in a worker" (I/O-bound worker:
+  29/30 heartbeats; CPU-bound: 3/33; `thread=True`: 35/35), what to do for the
+  sync hooks, and why FlowView will not run your renderable on a thread.
+- `track_visibility`, `animate_entry` and `FlowDecorator` docstrings now say they
+  are not awaited and show how to start slow work instead of waiting for it.
+
 ## [0.17.0] - 2026-08-11
 
 ### Fixed

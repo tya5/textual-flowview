@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
@@ -434,10 +435,10 @@ async def test_yank_uses_clipboard_hook() -> None:
         v = app.flow
         v.focus()
         await pilot.press("v", "l", "l", "l", "l")  # "hello"
-        assert v.yank() == "hello"
+        assert await v.yank() == "hello"
         assert sink == ["hello"]
         assert app.copied == []                      # did NOT go through OSC 52
-        assert v.write_clipboard("x") is True
+        assert await v.write_clipboard("x") is True
 
 
 @pytest.mark.asyncio
@@ -469,7 +470,7 @@ async def test_selection_excludes_gutter() -> None:
         assert v.row_text(0) == "newest reply body"   # body only, no '**'
         assert v.row_text(0)[v._tc_col] == "n"         # starts at the body
         await pilot.press("v", "j", "l", "l", "l")     # multi-row selection
-        assert v.yank() == "newest reply body\nseco"   # no gutter on any row
+        assert await v.yank() == "newest reply body\nseco"   # no gutter on any row
 
 
 @pytest.mark.asyncio
@@ -533,3 +534,43 @@ async def test_revealing_the_cursor_leaves_a_keyboard_position_alone() -> None:
             "revealing the cursor moved the highlight away from where the keys "
             "had put it"
         )
+
+
+@pytest.mark.asyncio
+async def test_clipboard_hook_may_be_async() -> None:
+    # The clipboard sink's result is reported back to the caller, so it can't be
+    # fired and forgotten — hence it accepts a coroutine ("await me maybe"), so a
+    # sink that shells out can await instead of blocking the UI.
+    sink: list[str] = []
+
+    async def async_copy(text: str) -> bool:
+        await asyncio.sleep(0)      # a real sink would await a subprocess here
+        sink.append(text)
+        return True
+
+    app = CopyApp(["hello world"], cursor=True, clipboard=async_copy)
+    async with app.run_test(size=(30, 6)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        v.focus()
+        await pilot.press("v", "l", "l", "l", "l")   # select "hello"
+        assert await v.yank() == "hello"
+        assert sink == ["hello"]
+        assert app.copied == []                      # not via OSC 52
+        assert await v.write_clipboard("x") is True  # the awaited result is used
+
+
+@pytest.mark.asyncio
+async def test_clipboard_hook_may_still_be_sync() -> None:
+    sink: list[str] = []
+    app = CopyApp(["hello world"], cursor=True,
+                  clipboard=lambda s: sink.append(s) or True)
+    async with app.run_test(size=(30, 6)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        v = app.flow
+        v.focus()
+        await pilot.press("v", "l", "l", "l", "l")
+        assert await v.yank() == "hello"
+        assert sink == ["hello"]
