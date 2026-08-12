@@ -35,8 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Recommend half-blocks and stop recommending terminal detection.** 0.18.2
   suggested gating the Kitty placeholder renderable on the terminal name; that
   pushes a fragile allowlist onto every consumer. It is also unnecessary:
-  half-blocks occupy cells, need no detection, and render correctly everywhere —
-  the only cost is resolution, and they look fine in practice.
+  half-blocks occupy cells, need no detection, and render correctly everywhere.
+  They are visibly chunky — two pixels per cell, so blocky edges and lost detail;
+  a recognisable low-res preview rather than a faithful picture.
 
   Verified first-hand this time, in a real WezTerm (20240203) rather than
   headless: the Kitty placeholder renderable draws the placeholders as visible

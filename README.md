@@ -645,8 +645,15 @@ You tell FlowView the height; there's no per-widget `styles.height` to remember.
 > [rich-pixels](https://github.com/darrenburns/rich-pixels) is the same idea as a
 > one-liner (`Pixels.from_image(img)`) if you'd rather not write it. Either way
 > you get cells, so it renders on every terminal and FlowView places and clips it
-> normally — the only cost is resolution, and in practice it looks fine (smooth
-> gradients, recognisable shapes).
+> normally.
+>
+> **Be honest with yourself about the quality**: one cell carries two pixels, so
+> this is *chunky* — blocky edges, visible banding, and small detail (faces,
+> text in a screenshot, thin lines) is lost. It reads as "a low-res preview you
+> can recognise", not "a picture". If your feed genuinely needs faithful images,
+> a cell-painting widget is the wrong tool and you want real pixels in a terminal
+> that draws them — which today effectively means Kitty, with the placeholder
+> renderable.
 
 An **animated GIF** is just image frames advanced on a timer — pair the image
 renderable with `animate_entry`, which ticks only while the entry is on screen

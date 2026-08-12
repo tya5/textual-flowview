@@ -20,7 +20,12 @@ paints rows as *cells*, so it can only place an image that occupies cells:
 ∴ what's left is coloured **half-block cells**, which need no protocol machinery
 at all. A renderable is a *Rich* concept, not a Textual one, so this example
 writes its own in ~15 lines (`HalfBlockImage` below) — no `textual-image`, no
-`rich-pixels`. It renders on every terminal; the only cost is resolution.
+`rich-pixels`. It renders on every terminal.
+
+Quality caveat: one cell carries two pixels, so this is **chunky** — blocky edges,
+banding, and small detail is lost. It's a recognisable low-res preview, not a
+faithful picture. If you need the latter you want real pixels, which today means
+Kitty with the placeholder renderable.
 
 Requires:  pip install pillow          (only to *make* the demo images)
 Run:       PYTHONPATH=src python examples/image.py
