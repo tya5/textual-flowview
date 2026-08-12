@@ -617,13 +617,25 @@ You tell FlowView the height; there's no per-widget `styles.height` to remember.
 > auto-detecting import breaks on exactly those terminals. Import the renderable
 > you want instead.
 >
-> ⚠️ **Real pixels can't be auto-detected either.** Placeholder mode works on
-> **Kitty**, but **WezTerm and Konsole report Kitty-graphics support and then
-> render the placeholders as visible glyphs** (verified first-hand on WezTerm
-> 20240203). And it **cannot be detected at runtime**:
-> `tgp.query_terminal_support()` probes basic Kitty graphics — there is no query
-> for "do placeholders actually draw" — so it returns `True` on WezTerm and the
-> image comes out garbled.
+> ⚠️ **Real pixels: the *capability* can't be queried, only the terminal's
+> identity.** Placeholder mode works on **Kitty**, but **WezTerm and Konsole
+> report Kitty-graphics support and then render the placeholders as visible
+> glyphs** (verified first-hand on WezTerm 20240203). There is **no query for "do
+> placeholders actually draw"** — the Kitty graphics query answers `OK` for mere
+> transmission support, which is why `tgp.query_terminal_support()` returns `True`
+> on WezTerm and the image comes out garbled.
+>
+> What *is* reliable is asking the terminal who it is: **XTVERSION** (`CSI > q`)
+> is answered by the terminal itself, not guessed from `TERM` — measured on a
+> WezTerm whose `TERM` was plain `xterm-256color`:
+>
+> ```text
+> ESC [ > q   ->   ESC P >| WezTerm 20240203-110809-5046fc22 ESC \
+> ```
+>
+> So opting into `tgp` for known-good terminals is a *maintained allowlist*
+> (keyed on that, not on `TERM`), not a fragile guess — but it is still a list
+> someone has to keep, and unknown terminals must fall back anyway.
 >
 > **So you don't need an image library at all.** Once Sixel is out (unplaceable)
 > and Kitty placeholders are out (undetectably broken on common terminals), the

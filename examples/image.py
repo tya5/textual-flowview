@@ -14,8 +14,12 @@ paints rows as *cells*, so it can only place an image that occupies cells:
    the terminal supports it, so the convenient import is the broken one.
 2. **Kitty placeholders can't be relied on.** They work on Kitty, but WezTerm and
    Konsole report Kitty-graphics support and then draw the placeholders as
-   visible glyphs (verified on WezTerm 20240203) — and there is no query for
-   "do placeholders draw", so it can't be detected at runtime.
+   visible glyphs (verified on WezTerm 20240203). There is no query for "do
+   placeholders draw" — the graphics query answers `OK` for mere transmission —
+   so the *capability* is undetectable. (The terminal's *identity* is: XTVERSION
+   `CSI > q` returns e.g. "WezTerm 20240203-110809-5046fc22" even when `TERM` is
+   plain `xterm-256color`. An opt-in allowlist keyed on that is workable, but
+   it's a list someone has to maintain.)
 
 ∴ what's left is coloured **half-block cells**, which need no protocol machinery
 at all. A renderable is a *Rich* concept, not a Textual one, so this example

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.1] - 2026-08-13
+
+### Documentation
+
+- **Correction: the terminal's *identity* is detectable; only the placeholder
+  *capability* isn't.** 0.18.3–0.19.0 said real pixels "cannot be detected at
+  runtime" and called terminal allowlists fragile. The first half stands — there
+  is no query for "do placeholders draw", and the Kitty graphics query answers
+  `OK` for mere transmission, which is exactly why `query_terminal_support()`
+  false-positives on WezTerm. The second half was wrong: **XTVERSION** (`CSI > q`)
+  is answered by the terminal itself, so identification does not depend on `TERM`
+  guessing — measured on a WezTerm reporting
+  `WezTerm 20240203-110809-5046fc22` while `TERM` was plain `xterm-256color`.
+  An opt-in allowlist keyed on XTVERSION is therefore a *maintained list*, not a
+  fragile heuristic. Half-blocks remain the zero-maintenance default.
+- **Describe half-block quality honestly.** Earlier wording ("looks fine", "smooth
+  gradients") was overstated: one cell carries two pixels, so it is visibly chunky
+  — blocky edges, banding, lost small detail. A recognisable low-res preview, not
+  a faithful picture.
+
 ## [0.19.0] - 2026-08-13
 
 ### Documentation
