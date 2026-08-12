@@ -16,14 +16,19 @@ row.
    FlowView has no way to position or clip it (measured: 0 cells for Sixel vs
    120 placeholder cells for the Kitty renderable).
 2. Kitty *placeholder* mode is only known-good on **Kitty itself**. WezTerm and
-   Konsole report Kitty-graphics support but don't render the placeholders — they
-   show up as visible characters over the image — and
-   `tgp.query_terminal_support()` doesn't test for that. So this example gates on
-   the terminal and otherwise uses half-blocks, which are approximate but render
-   correctly everywhere.
+   Konsole report Kitty-graphics support but render the placeholders as visible
+   glyphs (verified on WezTerm 20240203), and `tgp.query_terminal_support()`
+   only probes basic Kitty graphics — there is no query for "do placeholders
+   draw", so this *cannot be detected at runtime*.
+
+∴ this example uses **half-blocks unconditionally** — no terminal detection at
+all. They occupy cells, render correctly everywhere, and cost only resolution.
+Real pixels are an explicit opt-in for someone who knows their terminal:
+
+    FLOWVIEW_IMAGE=tgp PYTHONPATH=src python examples/image.py    # Kitty
 
 Requires:  pip install textual-image pillow
-Run:       PYTHONPATH=src python examples/image.py     (real pixels in Kitty)
+Run:       PYTHONPATH=src python examples/image.py
 """
 
 from __future__ import annotations
@@ -42,9 +47,13 @@ try:
     from PIL import Image as PILImage
     from PIL import ImageDraw
 
-    # Cell-based renderables ONLY — see the note above. Placeholder mode is
-    # known-good on Kitty; everywhere else half-blocks, which always render.
-    if os.environ.get("TERM") == "xterm-kitty":
+    # Half-blocks by DEFAULT — no terminal detection. They occupy cells (so
+    # FlowView can place and clip them) and render correctly everywhere; the only
+    # cost is resolution. Real pixels are an explicit opt-in for someone who
+    # knows their terminal draws Kitty placeholders (Kitty does; WezTerm and
+    # Konsole report Kitty-graphics support but render the placeholders as
+    # visible glyphs — and no query can tell you that, so it can't be detected).
+    if os.environ.get("FLOWVIEW_IMAGE") == "tgp":
         from textual_image.renderable.tgp import Image as CellImage
     else:
         from textual_image.renderable.halfcell import Image as CellImage
@@ -114,7 +123,7 @@ class MessagePresenter:
 
 MESSAGES = [
     Message("Ada", "Morning! Pushed the render_line refactor.", (90, 160, 240)),
-    Message("Bo", "Real pixels in Kitty; half-blocks elsewhere.", (240, 120, 90)),
+    Message("Bo", "Half-blocks by default — no terminal detection.", (240, 120, 90)),
     Message("Ada", "Yep — cell-based placeholders, so they scroll and clip.", (90, 160, 240)),
     Message("Cy", "Here's the latency chart:", (120, 200, 120), picture=True),
     Message("Bo", "Ship it.", (240, 120, 90)),

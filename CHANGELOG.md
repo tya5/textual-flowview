@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.3] - 2026-08-13
+
+### Documentation
+
+- **Recommend half-blocks and stop recommending terminal detection.** 0.18.2
+  suggested gating the Kitty placeholder renderable on the terminal name; that
+  pushes a fragile allowlist onto every consumer. It is also unnecessary:
+  half-blocks occupy cells, need no detection, and render correctly everywhere —
+  the only cost is resolution, and they look fine in practice.
+
+  Verified first-hand this time, in a real WezTerm (20240203) rather than
+  headless: the Kitty placeholder renderable draws the placeholders as visible
+  coloured glyphs instead of the image, while half-blocks render the same feed
+  cleanly. Also spelled out *why* a fallback can't be automatic:
+  `tgp.query_terminal_support()` probes basic Kitty graphics and there is no
+  query for whether placeholders actually draw, so it returns `True` on WezTerm.
+
+  `examples/image.py` now uses half-blocks unconditionally, with real pixels
+  behind an explicit `FLOWVIEW_IMAGE=tgp` opt-in.
+
 ## [0.18.2] - 2026-08-13
 
 ### Documentation

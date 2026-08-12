@@ -617,26 +617,27 @@ You tell FlowView the height; there's no per-widget `styles.height` to remember.
 > auto-detecting import breaks on exactly those terminals. Import the renderable
 > you want instead.
 >
-> ⚠️ **And don't trust auto-detection for the Kitty renderable either.**
-> Placeholder mode works on **Kitty**; **WezTerm and Konsole report Kitty-graphics
-> support but do not render the placeholders** — textual-image says so in its own
-> selection code ("Konsole and wezterm report TGP support, but don't work with our
-> placeholder implementation"), and `tgp.query_terminal_support()` only probes
-> basic Kitty graphics, *not* whether placeholders draw. A consumer hit exactly
-> this: `tgp` on WezTerm rendered the placeholder combining characters as visible
-> magenta `0`s over the image. So gate it on the terminal, not just on the probe:
+> ⚠️ **Real pixels can't be auto-detected either — prefer half-blocks.**
+> Placeholder mode works on **Kitty**, but **WezTerm and Konsole report
+> Kitty-graphics support and then render the placeholders as visible glyphs**
+> (verified first-hand on WezTerm 20240203; textual-image says the same in its own
+> selection code). And it **cannot be detected at runtime**:
+> `tgp.query_terminal_support()` probes basic Kitty graphics — there is no query
+> for "do placeholders actually draw" — so it returns `True` on WezTerm and the
+> image comes out garbled.
+>
+> That leaves terminal-name allowlists (fragile, and something every consumer
+> would have to carry) or simply not choosing:
 >
 > ```python
-> # Placeholder mode is only known-good on Kitty; elsewhere use half-blocks.
-> if os.environ.get("TERM") == "xterm-kitty":
->     from textual_image.renderable.tgp import Image as ImageRenderable
-> else:
->     from textual_image.renderable.halfcell import Image as ImageRenderable
+> from textual_image.renderable.halfcell import Image as ImageRenderable
 > ```
 >
-> Half-blocks are approximate but render correctly everywhere — for a feed that
-> has to work on whatever terminal the reader has, that is usually the better
-> default, with `tgp` as an opt-in for known-good terminals.
+> **Half-blocks need no detection at all**, occupy cells, and render correctly on
+> every terminal — the only cost is resolution, and in practice they look fine
+> (smooth gradients, recognisable shapes). For a feed that has to work on whatever
+> terminal the reader has, that's the right default; treat `tgp` as an explicit
+> opt-in for someone who knows their terminal.
 
 An **animated GIF** is just image frames advanced on a timer — pair the image
 renderable with `animate_entry`, which ticks only while the entry is on screen
