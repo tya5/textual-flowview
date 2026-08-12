@@ -7,14 +7,20 @@ sits under a picture via `Group`. The image is a Rich renderable
 `Presentation` — no FlowView changes, and it **virtualizes and scrolls** like any
 row.
 
-⚠️ The image renderable is chosen **explicitly**, not via
-`textual_image.renderable.Image`. That auto-selects **Sixel** first wherever the
-terminal supports it, and Sixel cannot work in a virtualized painter: it draws
-pixels relative to the cursor instead of occupying cells, so the rendered row
-contains *zero cells* and FlowView has no way to position or clip it (measured:
-0 cells for Sixel vs 120 placeholder cells for the Kitty renderable). Prefer the
-Kitty graphics *Unicode-placeholder* renderable — cell-based, so it clips
-correctly as you scroll — and fall back to half-blocks, which work anywhere.
+⚠️ The image renderable is chosen **explicitly**, never via
+`textual_image.renderable.Image` — twice over:
+
+1. That auto-selects **Sixel** first wherever the terminal supports it, and Sixel
+   cannot work in a virtualized painter: it draws pixels relative to the cursor
+   instead of occupying cells, so the rendered row contains *zero cells* and
+   FlowView has no way to position or clip it (measured: 0 cells for Sixel vs
+   120 placeholder cells for the Kitty renderable).
+2. Kitty *placeholder* mode is only known-good on **Kitty itself**. WezTerm and
+   Konsole report Kitty-graphics support but don't render the placeholders — they
+   show up as visible characters over the image — and
+   `tgp.query_terminal_support()` doesn't test for that. So this example gates on
+   the terminal and otherwise uses half-blocks, which are approximate but render
+   correctly everywhere.
 
 Requires:  pip install textual-image pillow
 Run:       PYTHONPATH=src python examples/image.py     (real pixels in Kitty)
@@ -22,6 +28,7 @@ Run:       PYTHONPATH=src python examples/image.py     (real pixels in Kitty)
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 
 from rich.console import Console, Group, RenderableType
@@ -35,9 +42,12 @@ try:
     from PIL import Image as PILImage
     from PIL import ImageDraw
 
-    # Cell-based renderables ONLY — see the note above. `textual_image.renderable
-    # .Image` would auto-select Sixel, which a virtualized painter cannot place.
-    from textual_image.renderable.tgp import Image as CellImage
+    # Cell-based renderables ONLY — see the note above. Placeholder mode is
+    # known-good on Kitty; everywhere else half-blocks, which always render.
+    if os.environ.get("TERM") == "xterm-kitty":
+        from textual_image.renderable.tgp import Image as CellImage
+    else:
+        from textual_image.renderable.halfcell import Image as CellImage
 except ModuleNotFoundError:  # pragma: no cover
     raise SystemExit(
         "This example needs textual-image + pillow:  pip install textual-image pillow"
@@ -104,7 +114,7 @@ class MessagePresenter:
 
 MESSAGES = [
     Message("Ada", "Morning! Pushed the render_line refactor.", (90, 160, 240)),
-    Message("Bo", "Nice. The avatars are real pixels in Kitty 👀", (240, 120, 90)),
+    Message("Bo", "Real pixels in Kitty; half-blocks elsewhere.", (240, 120, 90)),
     Message("Ada", "Yep — cell-based placeholders, so they scroll and clip.", (90, 160, 240)),
     Message("Cy", "Here's the latency chart:", (120, 200, 120), picture=True),
     Message("Bo", "Ship it.", (240, 120, 90)),

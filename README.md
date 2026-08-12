@@ -615,18 +615,28 @@ You tell FlowView the height; there's no per-widget `styles.height` to remember.
 > **This matters because `textual_image.renderable.Image` auto-selects Sixel
 > first** where the terminal supports it (WezTerm, Konsole, xterm …), so the
 > auto-detecting import breaks on exactly those terminals. Import the renderable
-> you want instead:
+> you want instead.
+>
+> ⚠️ **And don't trust auto-detection for the Kitty renderable either.**
+> Placeholder mode works on **Kitty**; **WezTerm and Konsole report Kitty-graphics
+> support but do not render the placeholders** — textual-image says so in its own
+> selection code ("Konsole and wezterm report TGP support, but don't work with our
+> placeholder implementation"), and `tgp.query_terminal_support()` only probes
+> basic Kitty graphics, *not* whether placeholders draw. A consumer hit exactly
+> this: `tgp` on WezTerm rendered the placeholder combining characters as visible
+> magenta `0`s over the image. So gate it on the terminal, not just on the probe:
 >
 > ```python
-> try:                       # real pixels where supported…
+> # Placeholder mode is only known-good on Kitty; elsewhere use half-blocks.
+> if os.environ.get("TERM") == "xterm-kitty":
 >     from textual_image.renderable.tgp import Image as ImageRenderable
-> except ImportError:
+> else:
 >     from textual_image.renderable.halfcell import Image as ImageRenderable
 > ```
 >
-> (Kitty supports the placeholder mode; on terminals that report Kitty-graphics
-> support but not placeholders, use the half-block renderable. Sixel-only
-> terminals get the half-block approximation.)
+> Half-blocks are approximate but render correctly everywhere — for a feed that
+> has to work on whatever terminal the reader has, that is usually the better
+> default, with `tgp` as an opt-in for known-good terminals.
 
 An **animated GIF** is just image frames advanced on a timer — pair the image
 renderable with `animate_entry`, which ticks only while the entry is on screen

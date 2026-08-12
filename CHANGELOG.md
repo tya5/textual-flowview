@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.2] - 2026-08-13
+
+### Documentation
+
+- **Name the terminals where the Kitty placeholder renderable does *not* work.**
+  0.18.1 said to prefer the cell-based Kitty renderable over Sixel, but only
+  vaguely noted that some terminals report Kitty-graphics support without
+  rendering placeholders. In practice that is **WezTerm and Konsole** —
+  textual-image says so in its own selection code — and
+  `tgp.query_terminal_support()` probes basic Kitty graphics, *not* whether
+  placeholders draw, so auto-detection can't be trusted for `tgp` either. A
+  consumer hit exactly this: on WezTerm the placeholder combining characters
+  rendered as visible magenta `0`s over the image. The README now names the
+  terminals, explains why the probe is insufficient, and shows gating on the
+  terminal with half-blocks as the safe default.
+
+### Fixed
+
+- `examples/image.py` hard-imported the Kitty renderable, which would have
+  garbled on WezTerm/Konsole. It now selects `tgp` only on Kitty and half-blocks
+  elsewhere (verified: Kitty → 456 placeholder cells, WezTerm → 465 coloured
+  cells and no placeholders).
+
 ## [0.18.1] - 2026-08-13
 
 ### Documentation
