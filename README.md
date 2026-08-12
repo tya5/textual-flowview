@@ -617,27 +617,36 @@ You tell FlowView the height; there's no per-widget `styles.height` to remember.
 > auto-detecting import breaks on exactly those terminals. Import the renderable
 > you want instead.
 >
-> ⚠️ **Real pixels can't be auto-detected either — prefer half-blocks.**
-> Placeholder mode works on **Kitty**, but **WezTerm and Konsole report
-> Kitty-graphics support and then render the placeholders as visible glyphs**
-> (verified first-hand on WezTerm 20240203; textual-image says the same in its own
-> selection code). And it **cannot be detected at runtime**:
+> ⚠️ **Real pixels can't be auto-detected either.** Placeholder mode works on
+> **Kitty**, but **WezTerm and Konsole report Kitty-graphics support and then
+> render the placeholders as visible glyphs** (verified first-hand on WezTerm
+> 20240203). And it **cannot be detected at runtime**:
 > `tgp.query_terminal_support()` probes basic Kitty graphics — there is no query
 > for "do placeholders actually draw" — so it returns `True` on WezTerm and the
 > image comes out garbled.
 >
-> That leaves terminal-name allowlists (fragile, and something every consumer
-> would have to carry) or simply not choosing:
+> **So you don't need an image library at all.** Once Sixel is out (unplaceable)
+> and Kitty placeholders are out (undetectably broken on common terminals), the
+> only thing left *is* coloured half-block cells — and that needs no protocol
+> machinery. A renderable is a **Rich** concept, not a Textual one, so ~15 lines
+> gets you there with no new dependency:
 >
 > ```python
-> from textual_image.renderable.halfcell import Image as ImageRenderable
+> class HalfBlockImage:                     # pixels: rows of (r, g, b)
+>     def __init__(self, pixels, w, h): self.px, self.w, self.h = pixels, w, h
+>     def __rich_console__(self, console, options):
+>         for y in range(0, self.h - 1, 2):          # two pixel rows per text row
+>             for x in range(self.w):
+>                 t, b = self.px[y][x], self.px[y + 1][x]
+>                 yield Segment("▀", Style(color=f"rgb{t}", bgcolor=f"rgb{b}"))
+>             yield Segment("\n")
 > ```
 >
-> **Half-blocks need no detection at all**, occupy cells, and render correctly on
-> every terminal — the only cost is resolution, and in practice they look fine
-> (smooth gradients, recognisable shapes). For a feed that has to work on whatever
-> terminal the reader has, that's the right default; treat `tgp` as an explicit
-> opt-in for someone who knows their terminal.
+> [rich-pixels](https://github.com/darrenburns/rich-pixels) is the same idea as a
+> one-liner (`Pixels.from_image(img)`) if you'd rather not write it. Either way
+> you get cells, so it renders on every terminal and FlowView places and clips it
+> normally — the only cost is resolution, and in practice it looks fine (smooth
+> gradients, recognisable shapes).
 
 An **animated GIF** is just image frames advanced on a timer — pair the image
 renderable with `animate_entry`, which ticks only while the entry is on screen
@@ -966,7 +975,7 @@ PYTHONPATH=src python examples/infinite.py        # infinite scroll: lazy-load o
 PYTHONPATH=src python examples/progress.py        # Rich Spinner + ProgressBar in entries
 PYTHONPATH=src python examples/minimap.py         # minimap replacing the scrollbar
 PYTHONPATH=src python examples/chat.py            # streaming chat
-PYTHONPATH=src python examples/image.py           # images + text in the feed (needs: pip install textual-image pillow; real pixels on Kitty)
+PYTHONPATH=src python examples/image.py           # images + text in the feed (needs: pip install pillow — no image library)
 PYTHONPATH=src python examples/gif.py             # animated GIF in an entry, auto-pauses off-screen (needs: pip install rich-pixels pillow)
 PYTHONPATH=src python examples/screensaver.py     # idle viewport overlay (needs: pip install terminaltexteffects)
 PYTHONPATH=src python examples/compare.py         # live FPS: VerticalScroll vs FlowView

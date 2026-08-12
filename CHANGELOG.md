@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-08-13
+
+### Documentation
+
+- **You don't need an image library to put images in the feed.** Once Sixel is
+  ruled out (it occupies no cells, so a virtualized painter can't place it) and
+  Kitty placeholders are ruled out (undetectably broken on WezTerm/Konsole), the
+  only workable form *is* coloured half-block cells — which need no protocol
+  machinery at all. And a renderable is a **Rich** concept, not a Textual one, so
+  ~15 lines of `__rich_console__` yielding `Segment("▀", Style(color=…,
+  bgcolor=…))` is a complete image renderable.
+
+  `examples/image.py` now does exactly that: **no `textual-image`, no
+  `rich-pixels`** (pillow only, and only to generate the demo images). Verified
+  in a real WezTerm with neither library installed — avatars and a gradient
+  picture render cleanly and scroll like any row.
+
+  This removes the footgun rather than documenting it: `textual_image.renderable
+  .Image` auto-selects Sixel first, so the convenient import was the broken one,
+  and the library's remaining useful mode is the one you can write yourself.
+
 ## [0.18.3] - 2026-08-13
 
 ### Documentation

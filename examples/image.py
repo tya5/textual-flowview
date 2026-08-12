@@ -1,42 +1,39 @@
-"""textual-flowview image demo — real-pixel images in the feed, mixed with text.
+"""textual-flowview image demo — images in the feed, mixed with text.
 
 Each message is ONE entry whose body composes an **image + text** with plain Rich
 layout: a `Table.grid` puts a round avatar beside the name/body, and a caption
-sits under a picture via `Group`. The image is a Rich renderable
-([textual-image](https://github.com/lnqs/textual-image)) dropped straight into a
-`Presentation` — no FlowView changes, and it **virtualizes and scrolls** like any
-row.
+sits under a picture via `Group`. No FlowView changes, and it **virtualizes and
+scrolls** like any row.
 
-⚠️ The image renderable is chosen **explicitly**, never via
-`textual_image.renderable.Image` — twice over:
+⚠️ **No image library is needed — and the popular one is a trap here.** FlowView
+paints rows as *cells*, so it can only place an image that occupies cells:
 
-1. That auto-selects **Sixel** first wherever the terminal supports it, and Sixel
-   cannot work in a virtualized painter: it draws pixels relative to the cursor
-   instead of occupying cells, so the rendered row contains *zero cells* and
-   FlowView has no way to position or clip it (measured: 0 cells for Sixel vs
-   120 placeholder cells for the Kitty renderable).
-2. Kitty *placeholder* mode is only known-good on **Kitty itself**. WezTerm and
-   Konsole report Kitty-graphics support but render the placeholders as visible
-   glyphs (verified on WezTerm 20240203), and `tgp.query_terminal_support()`
-   only probes basic Kitty graphics — there is no query for "do placeholders
-   draw", so this *cannot be detected at runtime*.
+1. **Sixel is unusable.** It draws pixels relative to the cursor instead of into
+   cells, so the rendered row holds *zero cells* and FlowView cannot position or
+   clip it. `textual_image.renderable.Image` **auto-selects Sixel first** where
+   the terminal supports it, so the convenient import is the broken one.
+2. **Kitty placeholders can't be relied on.** They work on Kitty, but WezTerm and
+   Konsole report Kitty-graphics support and then draw the placeholders as
+   visible glyphs (verified on WezTerm 20240203) — and there is no query for
+   "do placeholders draw", so it can't be detected at runtime.
 
-∴ this example uses **half-blocks unconditionally** — no terminal detection at
-all. They occupy cells, render correctly everywhere, and cost only resolution.
-Real pixels are an explicit opt-in for someone who knows their terminal:
+∴ what's left is coloured **half-block cells**, which need no protocol machinery
+at all. A renderable is a *Rich* concept, not a Textual one, so this example
+writes its own in ~15 lines (`HalfBlockImage` below) — no `textual-image`, no
+`rich-pixels`. It renders on every terminal; the only cost is resolution.
 
-    FLOWVIEW_IMAGE=tgp PYTHONPATH=src python examples/image.py    # Kitty
-
-Requires:  pip install textual-image pillow
+Requires:  pip install pillow          (only to *make* the demo images)
 Run:       PYTHONPATH=src python examples/image.py
 """
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 
 from rich.console import Console, Group, RenderableType
+from rich.measure import Measurement
+from rich.segment import Segment
+from rich.style import Style
 from rich.table import Table
 from rich.text import Text
 from textual.app import App, ComposeResult
@@ -46,21 +43,38 @@ from textual_flowview import FlowModel, FlowView, Presentation
 try:
     from PIL import Image as PILImage
     from PIL import ImageDraw
-
-    # Half-blocks by DEFAULT — no terminal detection. They occupy cells (so
-    # FlowView can place and clip them) and render correctly everywhere; the only
-    # cost is resolution. Real pixels are an explicit opt-in for someone who
-    # knows their terminal draws Kitty placeholders (Kitty does; WezTerm and
-    # Konsole report Kitty-graphics support but render the placeholders as
-    # visible glyphs — and no query can tell you that, so it can't be detected).
-    if os.environ.get("FLOWVIEW_IMAGE") == "tgp":
-        from textual_image.renderable.tgp import Image as CellImage
-    else:
-        from textual_image.renderable.halfcell import Image as CellImage
 except ModuleNotFoundError:  # pragma: no cover
-    raise SystemExit(
-        "This example needs textual-image + pillow:  pip install textual-image pillow"
-    ) from None
+    raise SystemExit("This example needs pillow:  pip install pillow") from None
+
+
+class HalfBlockImage:
+    """A Rich renderable for an image, built from nothing but Segments.
+
+    Each text row carries two pixel rows: the upper half-block glyph is drawn in
+    the upper pixel's colour over the lower pixel's colour as background. That
+    makes it ordinary coloured *cells*, which is exactly what FlowView needs to
+    place and clip — and what every terminal can draw.
+    """
+
+    def __init__(self, image: PILImage.Image, width: int, height: int) -> None:
+        # height is in TEXT rows; sample two pixel rows per text row
+        self._img = image.convert("RGB").resize((width, height * 2))
+        self._w, self._h = width, height * 2
+
+    def __rich_console__(self, console: Console, options: object):
+        px = self._img.load()
+        for y in range(0, self._h - 1, 2):
+            for x in range(self._w):
+                top, bottom = px[x, y], px[x, y + 1]
+                yield Segment(
+                    "\u2580",
+                    Style(color=f"rgb({top[0]},{top[1]},{top[2]})",
+                          bgcolor=f"rgb({bottom[0]},{bottom[1]},{bottom[2]})"),
+                )
+            yield Segment("\n")
+
+    def __rich_measure__(self, console: Console, options: object) -> Measurement:
+        return Measurement(self._w, self._w)
 
 
 def _avatar(rgb: tuple[int, int, int], initial: str) -> PILImage.Image:
@@ -104,7 +118,7 @@ class MessagePresenter:
     async def present(self, item: Message, width: int) -> Presentation:
         style = f"bold rgb({item.color[0]},{item.color[1]},{item.color[2]})"
         # avatar (3 cell-rows) beside name + body — one entry, image + text mixed
-        avatar = CellImage(item.avatar(), width=6, height=3)
+        avatar = HalfBlockImage(item.avatar(), width=6, height=3)
         text = Group(Text(item.name, style=style), Text(item.body, style="grey85"))
         grid = Table.grid(padding=(0, 1))
         grid.add_column()          # avatar
@@ -114,7 +128,7 @@ class MessagePresenter:
         body: RenderableType = grid
         if item.picture:
             # a wide picture with a caption underneath, stacked vertically
-            pic = CellImage(_picture(160, 60), width=max(1, width - 8), height=8)
+            pic = HalfBlockImage(_picture(160, 60), width=max(1, width - 8), height=8)
             body = Group(grid, Text(""), pic, Text("↑ an inline picture", style="grey50"))
 
         height = len(self._probe.render_lines(body, self._probe.options.update_width(width)))
@@ -123,7 +137,7 @@ class MessagePresenter:
 
 MESSAGES = [
     Message("Ada", "Morning! Pushed the render_line refactor.", (90, 160, 240)),
-    Message("Bo", "Half-blocks by default — no terminal detection.", (240, 120, 90)),
+    Message("Bo", "No image library — just Segments and colour.", (240, 120, 90)),
     Message("Ada", "Yep — cell-based placeholders, so they scroll and clip.", (90, 160, 240)),
     Message("Cy", "Here's the latency chart:", (120, 200, 120), picture=True),
     Message("Bo", "Ship it.", (240, 120, 90)),
