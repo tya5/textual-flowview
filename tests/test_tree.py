@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 
 import pytest
@@ -293,3 +294,100 @@ async def test_folding_holds_the_scroll_anchor() -> None:
 
         assert vp.entries[vp.locate(view.scroll_y)[0]] is top
         assert view.scroll_y == vp.offset_of(top)
+
+
+# -- animations & tracked resources under a fold ----------------------------
+
+
+@pytest.mark.asyncio
+async def test_folding_pauses_animations_in_the_subtree() -> None:
+    """A folded entry is off screen, so `animate_entry` must stop ticking and
+    `track_visibility` must fire on_hide — otherwise folding a noisy group
+    would leave its timers burning the event loop invisibly."""
+    m: FlowModel[Row] = FlowModel()
+    group = m.append(Row("group"))
+    kids = [group.append_child(Row(f"c{i}")) for i in range(3)]
+    ticks: dict[int, int] = {}
+    hidden: list[int] = []
+    shown: list[int] = []
+
+    async with _app(m, RowPresenter()).run_test(size=(40, 20)) as pilot:
+        view = pilot.app.query_one(FlowView)
+        await pilot.pause()
+        for kid in kids:
+            ticks[kid.id] = 0
+            view.animate_entry(
+                kid, 0.01, lambda e: ticks.__setitem__(e.id, ticks[e.id] + 1)
+            )
+            view.track_visibility(
+                kid, on_show=lambda e: shown.append(e.id),
+                on_hide=lambda e: hidden.append(e.id),
+            )
+        await asyncio.sleep(0.1)
+        await pilot.pause()
+        assert all(v > 0 for v in ticks.values()), "should tick while visible"
+
+        group.collapse()
+        await pilot.pause()
+        folded = dict(ticks)
+        await asyncio.sleep(0.12)
+        await pilot.pause()
+        assert all(ticks[k] == folded[k] for k in ticks), "folded: must not tick"
+        assert sorted(set(hidden)) == sorted(k.id for k in kids)
+
+        group.expand()
+        await pilot.pause()
+        resumed = dict(ticks)
+        await asyncio.sleep(0.1)
+        await pilot.pause()
+        assert all(ticks[k] > resumed[k] for k in ticks), "unfolded: must resume"
+        assert sorted(set(shown)) == sorted(k.id for k in kids)
+
+
+@pytest.mark.asyncio
+async def test_folding_an_outer_group_pauses_deeper_descendants() -> None:
+    m: FlowModel[Row] = FlowModel()
+    outer = m.append(Row("outer"))
+    inner = outer.append_child(Row("inner"))
+    deep = [inner.append_child(Row(f"d{i}")) for i in range(3)]
+    ticks: dict[int, int] = {}
+
+    async with _app(m, RowPresenter()).run_test(size=(40, 20)) as pilot:
+        view = pilot.app.query_one(FlowView)
+        await pilot.pause()
+        for kid in deep:
+            ticks[kid.id] = 0
+            view.animate_entry(
+                kid, 0.01, lambda e: ticks.__setitem__(e.id, ticks[e.id] + 1)
+            )
+        await asyncio.sleep(0.1)
+        await pilot.pause()
+        assert all(v > 0 for v in ticks.values())
+
+        outer.collapse()          # two levels above the animating entries
+        await pilot.pause()
+        folded = dict(ticks)
+        await asyncio.sleep(0.12)
+        await pilot.pause()
+        assert all(ticks[k] == folded[k] for k in ticks)
+
+
+@pytest.mark.asyncio
+async def test_removing_a_folded_parent_releases_the_subtree_s_timers() -> None:
+    m: FlowModel[Row] = FlowModel()
+    group = m.append(Row("group"))
+    kids = [group.append_child(Row(f"c{i}")) for i in range(3)]
+
+    async with _app(m, RowPresenter()).run_test(size=(40, 20)) as pilot:
+        view = pilot.app.query_one(FlowView)
+        await pilot.pause()
+        for kid in kids:
+            view.animate_entry(kid, 0.01, lambda e: None)
+        assert len(view._animations) == 3
+
+        group.collapse()
+        await pilot.pause()
+        group.remove()            # takes the whole subtree with it
+        await pilot.pause()
+        assert view._animations == {}
+        assert view._observers == {}
