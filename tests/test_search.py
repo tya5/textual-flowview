@@ -6,7 +6,7 @@ import pytest
 from rich.text import Text
 from textual.app import App, ComposeResult
 
-from textual_flowview import EntryState, FlowModel, FlowView, Presentation
+from textual_flowview import Entry, EntryState, FlowModel, FlowView, Presentation
 
 
 @dataclass
@@ -15,7 +15,8 @@ class Row:
 
 
 class RowPresenter:
-    async def present(self, item: Row, width: int) -> Presentation:
+    async def present(self, entry: Entry[Row], width: int) -> Presentation:
+        item = entry.item
         return Presentation(height=1, renderable=Text(item.text))
 
 
@@ -213,7 +214,8 @@ class CountingPresenter:
     def __init__(self) -> None:
         self.calls = 0
 
-    async def present(self, item: Row, width: int) -> Presentation:
+    async def present(self, entry: Entry[Row], width: int) -> Presentation:
+        item = entry.item
         self.calls += 1
         return Presentation(height=1, renderable=Text(item.text))
 

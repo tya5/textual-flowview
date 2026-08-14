@@ -5,11 +5,12 @@ from rich.text import Text
 from textual.actions import SkipAction
 from textual.app import App, ComposeResult
 
-from textual_flowview import Anchor, FlowModel, FlowView, Presentation
+from textual_flowview import Anchor, Entry, FlowModel, FlowView, Presentation
 
 
 class P:
-    async def present(self, item: str, width: int) -> Presentation:
+    async def present(self, entry: Entry[str], width: int) -> Presentation:
+        item = entry.item
         return Presentation(height=1, renderable=Text(item))
 
 

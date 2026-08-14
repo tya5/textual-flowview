@@ -18,6 +18,7 @@ from textual.containers import Horizontal
 from textual.widgets import Footer, Header
 
 from textual_flowview import (
+    Entry,
     EntryState,
     FlowMinimap,
     FlowModel,
@@ -34,7 +35,8 @@ class LogLine:
 
 
 class LogPresenter:
-    async def present(self, item: LogLine, width: int) -> Presentation:
+    async def present(self, entry: Entry[LogLine], width: int) -> Presentation:
+        item = entry.item
         return Presentation(height=1, renderable=Text(f"{item.seq:04d}  {item.text}"))
 
 

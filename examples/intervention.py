@@ -21,7 +21,7 @@ from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.widgets import Footer, Header
 
-from textual_flowview import Anchor, FlowModel, FlowView, Presentation
+from textual_flowview import Anchor, Entry, FlowModel, FlowView, Presentation
 
 INDENT = 2
 GAP = 2
@@ -52,7 +52,8 @@ class Message:
 
 
 class ChatPresenter:
-    async def present(self, item: Message, width: int) -> Presentation:
+    async def present(self, entry: Entry[Message], width: int) -> Presentation:
+        item = entry.item
         who = "You" if item.role == "user" else "Assistant"
         style = "cyan" if item.role == "user" else "green"
         head = Text.assemble((f"{who}  ", f"bold {style}"), (item.text, ""))

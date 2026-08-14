@@ -6,7 +6,7 @@ import pytest
 from rich.text import Text
 from textual.app import App, ComposeResult
 
-from textual_flowview import Anchor, FlowModel, FlowView, Presentation
+from textual_flowview import Anchor, Entry, FlowModel, FlowView, Presentation
 
 
 @dataclass
@@ -16,13 +16,14 @@ class Note:
 
 
 class NotePresenter:
-    async def present(self, item: Note, width: int) -> Presentation:
+    async def present(self, entry: Entry[Note], width: int) -> Presentation:
+        item = entry.item
         body = "\n".join(f"{item.text} ({width})" for _ in range(item.lines))
         return Presentation(height=item.lines, renderable=Text(body))
 
 
 class BoomPresenter:
-    async def present(self, item: Note, width: int) -> Presentation:
+    async def present(self, entry: Entry[Note], width: int) -> Presentation:
         raise RuntimeError("kaboom")
 
 
@@ -179,7 +180,8 @@ class CountingTextPresenter:
     def __init__(self) -> None:
         self.calls = 0
 
-    async def present(self, item: TextRow, width: int) -> Presentation:
+    async def present(self, entry: Entry[TextRow], width: int) -> Presentation:
+        item = entry.item
         self.calls += 1
         return Presentation(height=1, renderable=Text(item.text))
 

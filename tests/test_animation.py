@@ -7,7 +7,7 @@ import pytest
 from rich.text import Text
 from textual.app import App, ComposeResult
 
-from textual_flowview import FlowModel, FlowView, Presentation
+from textual_flowview import Entry, FlowModel, FlowView, Presentation
 
 
 @dataclass
@@ -19,7 +19,8 @@ class JobPresenter:
     def __init__(self) -> None:
         self.calls = 0
 
-    async def present(self, item: Job, width: int) -> Presentation:
+    async def present(self, entry: Entry[Job], width: int) -> Presentation:
+        item = entry.item
         self.calls += 1
         return Presentation(height=1, renderable=Text(item.text))
 
@@ -105,7 +106,8 @@ class Track:
 
 
 class TrackPresenter:
-    async def present(self, item, width) -> Presentation:
+    async def present(self, entry, width) -> Presentation:
+        item = entry.item
         return Presentation(height=1, renderable=Text(str(item.ticks)))
 
 
@@ -189,7 +191,7 @@ class Res:
 
 
 class ResPresenter:
-    async def present(self, item, width) -> Presentation:
+    async def present(self, entry, width) -> Presentation:
         return Presentation(height=1, renderable=Text("."))
 
 

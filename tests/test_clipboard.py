@@ -7,7 +7,7 @@ from rich.panel import Panel
 from rich.text import Text
 from textual.app import App, ComposeResult
 
-from textual_flowview import FlowModel, FlowView, Presentation
+from textual_flowview import Entry, FlowModel, FlowView, Presentation
 
 
 @dataclass
@@ -17,7 +17,8 @@ class Row:
 
 
 class RowPresenter:
-    async def present(self, item: Row, width: int) -> Presentation:
+    async def present(self, entry: Entry[Row], width: int) -> Presentation:
+        item = entry.item
         if item.panel:
             return Presentation(height=3, renderable=Panel(Text(item.text), width=width))
         return Presentation(height=1, renderable=Text(item.text))

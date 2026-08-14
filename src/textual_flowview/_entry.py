@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
@@ -38,23 +38,33 @@ class Entry(Generic[T]):
 
     __slots__ = (
         "_alive",
+        "_children",
+        "_collapsed",
         "_decor_revision",
+        "_depth",
         "_hidden",
         "_id",
         "_item",
         "_metadata",
         "_model",
+        "_parent",
         "_revision",
         "_state",
     )
 
-    def __init__(self, model: FlowModel[T], id: int, item: T) -> None:
+    def __init__(
+        self, model: FlowModel[T], id: int, item: T, parent: Entry[T] | None = None
+    ) -> None:
         self._model = model
         self._id = id
         self._item = item
         self._revision = 0
         self._alive = True
         self._hidden = False
+        self._parent = parent
+        self._children: list[Entry[T]] = []
+        self._depth: int = 0 if parent is None else parent._depth + 1
+        self._collapsed = False
         self._state: EntryState = EntryState.DEFAULT
         self._metadata: dict[str, Any] = {}
         # Bumped on state/metadata changes; drives gutter (not body) redraws.
@@ -101,8 +111,9 @@ class Entry(Generic[T]):
 
         Hidden entries stay in the model and keep their cached presentation
         (so showing them again is instant), but contribute no height and are
-        not drawn. This is the primitive group-collapse is built on: collapse
-        a header by hiding its child entries.
+        not drawn — and neither is their subtree, since a hidden parent cannot
+        show its children. This is the primitive for *filtering*; folding a
+        group is :attr:`collapsed`, which is independent of it.
         """
         return self._hidden
 
@@ -122,6 +133,97 @@ class Entry(Generic[T]):
             return
         self._hidden = hidden
         self._model._on_entry_visibility(self)
+
+    # -- tree ------------------------------------------------------------
+
+    @property
+    def parent(self) -> Entry[T] | None:
+        """The entry this one hangs under, or ``None`` for a top-level entry."""
+        return self._parent
+
+    @property
+    def children(self) -> tuple[Entry[T], ...]:
+        """This entry's direct children, in order. Empty for a leaf."""
+        return tuple(self._children)
+
+    @property
+    def depth(self) -> int:
+        """Nesting depth: 0 for a top-level entry, 1 for its children, and so on.
+
+        Fixed when the entry is created — entries are never re-parented — so it
+        is safe to render from. Indentation is **yours to apply**: FlowView
+        lays out and clips rows, it never indents or draws tree guides for you.
+        """
+        return self._depth
+
+    def ancestors(self) -> Iterator[Entry[T]]:
+        """Yield this entry's parent, grandparent, … up to the root."""
+        entry = self._parent
+        while entry is not None:
+            yield entry
+            entry = entry._parent
+
+    def descendants(self) -> Iterator[Entry[T]]:
+        """Yield the whole subtree below this entry in document order."""
+        for child in self._children:
+            yield child
+            yield from child.descendants()
+
+    def append_child(self, item: T) -> Entry[T]:
+        """Append ``item`` as this entry's last child and return its handle."""
+        return self._model.append(item, parent=self)
+
+    def insert_child(self, index: int, item: T) -> Entry[T]:
+        """Insert ``item`` among this entry's children at ``index``."""
+        return self._model.insert(index, item, parent=self)
+
+    # -- collapse ---------------------------------------------------------
+
+    @property
+    def collapsed(self) -> bool:
+        """Whether this entry's **subtree** is folded away.
+
+        Orthogonal to :attr:`hidden`: ``collapsed`` is about the descendants
+        (the entry itself stays on screen — it is the header you fold from),
+        ``hidden`` is about this entry (and, since a hidden parent can't show
+        its children, its subtree with it). A filter that hides entries and a
+        fold that collapses them therefore compose instead of fighting over one
+        flag.
+        """
+        return self._collapsed
+
+    @property
+    def visible(self) -> bool:
+        """Whether this entry is actually laid out and drawn.
+
+        ``True`` when it is not hidden and no ancestor is hidden or collapsed.
+        """
+        if self._hidden:
+            return False
+        return all(not (a._hidden or a._collapsed) for a in self.ancestors())
+
+    def collapse(self) -> None:
+        """Fold this entry's subtree away. A no-op if already collapsed."""
+        self.set_collapsed(True)
+
+    def expand(self) -> None:
+        """Unfold this entry's subtree. A no-op if already expanded."""
+        self.set_collapsed(False)
+
+    def toggle_collapsed(self) -> None:
+        """Fold or unfold this entry's subtree."""
+        self.set_collapsed(not self._collapsed)
+
+    def set_collapsed(self, collapsed: bool) -> None:
+        """Fold or unfold the subtree.
+
+        Descendants keep their cached presentations, so the fold itself never
+        re-presents them. *This* entry does re-present: its body is free to draw
+        the fold state (a ▸/▾ chevron, a "12 steps" summary) now that presenters
+        receive the entry, so a fold is a content change for the header and the
+        revision bumps accordingly. A no-op on a removed entry, a leaf, or when
+        unchanged."""
+        self._model.set_collapsed_many([self], collapsed)
 
     def set_state(self, state: EntryState) -> None:
         """Set the lifecycle state and redraw the gutter only.
@@ -230,4 +332,6 @@ class Entry(Generic[T]):
 
     def __repr__(self) -> str:
         state = "alive" if self._alive else "dead"
-        return f"<Entry id={self._id} rev={self._revision} {state}>"
+        tree = f" depth={self._depth}" if self._depth else ""
+        fold = " collapsed" if self._collapsed else ""
+        return f"<Entry id={self._id} rev={self._revision} {state}{tree}{fold}>"

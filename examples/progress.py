@@ -38,7 +38,8 @@ class Task:
 
 
 class TaskPresenter:
-    async def present(self, item: Task, width: int) -> Presentation:
+    async def present(self, entry: Entry[Task], width: int) -> Presentation:
+        item = entry.item
         head = Text(item.name, style="bold")
         bar = ProgressBar(
             total=100,

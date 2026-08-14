@@ -101,11 +101,17 @@ FlowView cache its rendered form doubles the cost.
 For per-entry resources that are not the body — a subscription, a video, a
 lazily-loaded asset — `track_visibility` is the general hook (see the README).
 
-### Note: hidden entries keep their presentation
+### Note: folded and hidden entries keep their presentation
 
-Collapsing a group hides its entries but deliberately retains their
-presentations, so expanding is instant. If a collapsed group is huge *and*
-expensive, remove the entries instead of hiding them.
+Folding a group (`entry.collapse()`) and hiding entries (`entry.hide()`) both
+deliberately retain the presentations of what they remove from view, so
+unfolding is instant and never re-presents. The corollary is that folding frees
+no body memory — only *paint* caches shrink, since those are trimmed to the
+visible band. If a folded group is huge *and* expensive, remove its entries
+rather than folding them, or swap their items for light ones and `update()`.
+
+A group that has never been expanded costs nothing at all: its entries are
+outside the laid-out set, so they are never presented in the first place.
 
 ## What FlowView deliberately does not do
 

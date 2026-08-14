@@ -14,7 +14,7 @@ timelines, logs, notifications, mail, AI agent transcripts).
 | Feature | Status |
 | --- | --- |
 | Variable-height items, paint virtualization, overscan + read-ahead | ✅ implemented |
-| Sticky group headers / group collapse / pinned-top | ✅ |
+| Sticky group headers / nested groups + folding / pinned-top | ✅ |
 | Sticky-bottom follow (chat) | ✅ (`Anchor.STICKY_BOTTOM`) |
 | Text selection + copy (incl. select-all), click hit-testing | ✅ |
 | Single selection (opt-in), search (`find`/`find_next`/`reveal`), minimap | ✅ |

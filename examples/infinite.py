@@ -22,7 +22,7 @@ from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.widgets import Footer, Header
 
-from textual_flowview import Anchor, FlowModel, FlowView, Presentation
+from textual_flowview import Anchor, Entry, FlowModel, FlowView, Presentation
 
 HISTORY = 300  # lines 0..HISTORY-1 exist "on the server"
 PAGE = 25      # how many to load per reach-top
@@ -34,7 +34,8 @@ class Line:
 
 
 class LinePresenter:
-    async def present(self, item: Line, width: int) -> Presentation:
+    async def present(self, entry: Entry[Line], width: int) -> Presentation:
+        item = entry.item
         hue = ["grey62", "cyan", "green", "magenta", "yellow"][item.n // 60 % 5]
         text = Text.assemble(
             (f"{item.n:04d}", hue),

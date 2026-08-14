@@ -20,7 +20,7 @@ from textual.app import App, ComposeResult
 from textual.containers import VerticalScroll
 from textual.widgets import Static
 
-from textual_flowview import FlowModel, FlowView, Presentation
+from textual_flowview import Entry, FlowModel, FlowView, Presentation
 
 N_VALUES = [100, 400, 1000, 2000]
 SIZE = (90, 30)
@@ -39,7 +39,8 @@ class Row:
 
 
 class RowPresenter:
-    async def present(self, item: Row, width: int) -> Presentation:
+    async def present(self, entry: Entry[Row], width: int) -> Presentation:
+        item = entry.item
         text = _content(item.i)
         return Presentation(height=text.count("\n") + 1, renderable=Text(text))
 

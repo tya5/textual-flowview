@@ -21,7 +21,7 @@ from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.widgets import Footer, Header
 
-from textual_flowview import FlowModel, FlowView, Presentation
+from textual_flowview import Entry, FlowModel, FlowView, Presentation
 
 
 @dataclass
@@ -31,7 +31,8 @@ class Command:
 
 
 class CommandPresenter:
-    async def present(self, item: Command, width: int) -> Presentation:
+    async def present(self, entry: Entry[Command], width: int) -> Presentation:
+        item = entry.item
         line = Text.assemble((f"  {item.name:<18}", "bold"), (item.detail, "grey54"))
         return Presentation(height=1, renderable=line)
 

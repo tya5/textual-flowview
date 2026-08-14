@@ -8,7 +8,8 @@ from textual_flowview import Entry, FlowModel, FlowView, Presentation
 
 
 class TallPresenter:
-    async def present(self, item: str, width: int) -> Presentation:
+    async def present(self, entry: Entry[str], width: int) -> Presentation:
+        item = entry.item
         return Presentation(
             height=10,
             renderable=Text("\n".join(f"{item} row {i}" for i in range(10))),
@@ -112,7 +113,8 @@ class Swappable:
 
 
 class SwapPresenter:
-    async def present(self, item: Swappable, width: int) -> Presentation:
+    async def present(self, entry: Entry[Swappable], width: int) -> Presentation:
+        item = entry.item
         if item.heavy:
             return Presentation(
                 height=10,

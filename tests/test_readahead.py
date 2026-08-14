@@ -6,7 +6,7 @@ import pytest
 from rich.text import Text
 from textual.app import App, ComposeResult
 
-from textual_flowview import FlowModel, FlowView, Presentation
+from textual_flowview import Entry, FlowModel, FlowView, Presentation
 
 
 @dataclass
@@ -15,7 +15,8 @@ class Row:
 
 
 class RowPresenter:
-    async def present(self, item: Row, width: int) -> Presentation:
+    async def present(self, entry: Entry[Row], width: int) -> Presentation:
+        item = entry.item
         # Height 1 == the default estimate, so offsets stay uniform and
         # deterministic (presenting an item never reflows the others).
         return Presentation(height=1, renderable=Text(f"row-{item.n}"))

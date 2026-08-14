@@ -42,7 +42,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Container, VerticalScroll
 from textual.widgets import Static
 
-from textual_flowview import FlowModel, FlowView, Presentation
+from textual_flowview import Entry, FlowModel, FlowView, Presentation
 
 N = 1500
 BAR_WIDTH = 34
@@ -80,7 +80,8 @@ class RowPresenter:
     def __init__(self, dynamic: bool) -> None:
         self.dynamic = dynamic
 
-    async def present(self, item: Row, width: int) -> Presentation:
+    async def present(self, entry: Entry[Row], width: int) -> Presentation:
+        item = entry.item
         if self.dynamic:
             # FlowView carries an explicit height, so a ProgressBar (whose height
             # a Static can't auto-measure) just works.

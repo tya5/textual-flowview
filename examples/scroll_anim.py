@@ -22,7 +22,7 @@ from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.widgets import Footer, Header
 
-from textual_flowview import FlowModel, FlowView, Presentation
+from textual_flowview import Entry, FlowModel, FlowView, Presentation
 
 N = 500
 DURATION = 1.2  # slow enough to watch the motion (and to stop / redirect it)
@@ -34,7 +34,8 @@ class Row:
 
 
 class RowPresenter:
-    async def present(self, item: Row, width: int) -> Presentation:
+    async def present(self, entry: Entry[Row], width: int) -> Presentation:
+        item = entry.item
         # A wide progress-style band so the position is obvious as it scrolls.
         filled = int((item.i / (N - 1)) * max(1, width - 8))
         bar = Text("█" * filled, style="grey37")

@@ -7,6 +7,7 @@ from rich.text import Text
 from textual.app import App, ComposeResult
 
 from textual_flowview import (
+    Entry,
     EntryState,
     FlowModel,
     FlowView,
@@ -27,13 +28,14 @@ class CountingPresenter:
     def __init__(self) -> None:
         self.calls = 0
 
-    async def present(self, item: Job, width: int) -> Presentation:
+    async def present(self, entry: Entry[Job], width: int) -> Presentation:
+        item = entry.item
         self.calls += 1
         return Presentation(height=2, renderable=Text(f"{item.text}\n."))
 
 
 class BoomPresenter:
-    async def present(self, item: Job, width: int) -> Presentation:
+    async def present(self, entry: Entry[Job], width: int) -> Presentation:
         raise RuntimeError("nope")
 
 
@@ -327,7 +329,8 @@ async def test_decorate_height_is_post_wrap() -> None:
     seen: list[tuple[int, int]] = []
 
     class TallPresenter:
-        async def present(self, item: Job, width: int) -> Presentation:
+        async def present(self, entry: Entry[Job], width: int) -> Presentation:
+            item = entry.item
             # declare a height that depends on width, like a real wrapping body
             rows = max(2, 200 // max(1, width))
             return Presentation(

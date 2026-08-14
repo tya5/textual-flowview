@@ -139,7 +139,8 @@ class ReynPresenter:
     def __init__(self) -> None:
         self._probe = Console()
 
-    async def present(self, item: ConvItem, width: int) -> Presentation:
+    async def present(self, entry: Entry[ConvItem], width: int) -> Presentation:
+        item = entry.item
         if item.kind == "ask_user":
             return self._present_ask_user(item, width)
         if item.kind == "tool_call":

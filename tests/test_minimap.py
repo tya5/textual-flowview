@@ -7,7 +7,7 @@ from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal
 
-from textual_flowview import EntryState, FlowMinimap, FlowModel, FlowView, Presentation
+from textual_flowview import Entry, EntryState, FlowMinimap, FlowModel, FlowView, Presentation
 
 
 @dataclass
@@ -16,7 +16,8 @@ class Row:
 
 
 class RowPresenter:
-    async def present(self, item: Row, width: int) -> Presentation:
+    async def present(self, entry: Entry[Row], width: int) -> Presentation:
+        item = entry.item
         return Presentation(height=1, renderable=Text(item.text))
 
 

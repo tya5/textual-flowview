@@ -8,7 +8,7 @@ from textual.app import App, ComposeResult
 from textual.geometry import Offset
 from textual.selection import SELECT_ALL, Selection
 
-from textual_flowview import FlowModel, FlowView, Presentation
+from textual_flowview import Entry, FlowModel, FlowView, Presentation
 
 
 @dataclass
@@ -17,7 +17,8 @@ class Row:
 
 
 class RowPresenter:
-    async def present(self, item: Row, width: int) -> Presentation:
+    async def present(self, entry: Entry[Row], width: int) -> Presentation:
+        item = entry.item
         return Presentation(height=1, renderable=Text(item.text))
 
 

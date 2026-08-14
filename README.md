@@ -93,7 +93,9 @@ PYTHONPATH=src python examples/compare.py container dynamic
 - **`Entry`** is the single stable handle to a displayed item — the only way
   to update or remove it.
 - **`FlowPresenter`** is the only component that knows the concrete item type;
-  it turns an item into a **`Presentation`** (height + renderable).
+  it turns an `Entry` into a **`Presentation`** (height + renderable). It gets
+  the entry, not just the item, so a body can read what FlowView owns —
+  `entry.depth`, `entry.collapsed`.
 - **`FlowView`** draws `Presentation`s and manages the viewport. It never sees
   your data type.
 
@@ -185,54 +187,114 @@ class MyDecorator:
 A presenter exception both renders an error body and flips the entry to
 `EntryState.ERROR` (so the gutter shows it) without crashing the app.
 
-## Collapse & group collapse
+## Groups, nesting & folding
 
-Two kinds of collapse fall out of the design:
-
-**Per-item collapse** is purely a presenter concern — no library feature
-needed. Keep a `collapsed` flag on your item; present a compact renderable when
-set; call `entry.update()` to reflow:
+FlowView owns the tree. Entries nest to any depth, a parent folds its subtree
+away, and a parent is an **ordinary entry** throughout — same presenter, same
+gutter, no special case:
 
 ```python
-async def present(self, item, width):
-    if item.collapsed:
-        return Presentation(height=1, renderable=Text(f"▸ {item.title}"))
-    return Presentation(height=full, renderable=Panel(...))   # ▾ expanded
+group = model.append(ToolCall("search"))       # top level
+step  = group.append_child(LogLine("hit 1"))   # or model.append(x, parent=group)
+model.extend([LogLine("hit 2"), LogLine("hit 3")], parent=group)
+
+group.collapse()          # fold the subtree away; the header stays on screen
+group.expand()
+group.toggle_collapsed()
+group.collapsed           # bool
+
+model.set_collapsed_many(groups, True)   # many subtrees, ONE reflow
 ```
 
-**Group collapse** uses the library's entry-visibility primitive. Hidden
-entries stay in the model and keep their cached presentation (showing them
-again is instant and never re-presents), but contribute no height and aren't
-drawn:
+Reading the shape:
+
+```python
+entry.parent            # Entry | None
+entry.children          # tuple[Entry, ...] — empty for a leaf
+entry.depth             # 0 at top level; fixed at creation
+entry.ancestors()       # parent, grandparent, …
+entry.descendants()     # the whole subtree, in document order
+entry.visible           # not hidden, and no ancestor hidden or collapsed
+```
+
+`insert`'s index is a position **among siblings**, so for a flat model it is
+still a plain positional insert. Iterating the model yields document order —
+each parent immediately followed by its subtree. Removing a parent removes its
+subtree with it.
+
+**The presenter receives the entry**, which is what makes a parent unremarkable:
+depth and fold state are FlowView's, and your body can read them directly
+instead of mirroring them into your item.
+
+```python
+async def present(self, entry: Entry[Node], width: int) -> Presentation:
+    indent = "  " * entry.depth                       # indenting is YOURS
+    if entry.children:
+        chevron = "▸" if entry.collapsed else "▾"
+        ...
+```
+
+FlowView never indents, never draws chevrons or tree guides, and never renders
+a parent differently — it lays out and clips rows, exactly as for a flat feed.
+Folding bumps the header's revision (its body may draw the chevron) and leaves
+every descendant's cached presentation alone, so a fold never re-presents what
+it hides. See [`examples/groups.py`](examples/groups.py).
+
+### Folding is O(1) in what you fold
+
+Descendants of a folded parent are simply not in the laid-out set. They cost
+nothing: no height, no paint, and — if they were never expanded — **no
+`present()` at all**, so a collapsed-by-default group is free until opened.
+Unfolding a group that has been seen before re-renders from cache (measured:
+0.4 ms for a screenful, no placeholder).
+
+⚠️ **Reserve the scrollbar gutter** if you fold large groups:
+
+```css
+FlowView { scrollbar-gutter: stable; }
+```
+
+A fold that shrinks the content below the viewport height removes the
+scrollbar, which *widens the body* — and width is part of the presentation
+cache key, so every entry re-presents. With the gutter reserved, folding and
+unfolding a 50-entry group cost zero presents; without it, 12.
+
+### Filtering is a separate flag
+
+`hidden` is about *this* entry; `collapsed` is about its *subtree*. They are
+independent, so a search filter and a fold compose instead of fighting over one
+flag — unfolding a group does not resurrect entries your filter hid.
 
 ```python
 entry.hidden          # bool
 entry.hide()          # exclude from the view
 entry.show()          # re-include
-entry.set_hidden(True)
 
-model.set_hidden_many(entries, True)   # a whole group as ONE operation
+model.set_hidden_many(entries, True)   # a run of entries as ONE operation
 ```
 
-A collapsible header is then just hiding a run of child entries — see
-[`examples/groups.py`](examples/groups.py):
+A hidden parent hides its subtree too — it cannot show children it isn't
+showing itself.
+
+**Batch, don't loop.** Both `set_hidden_many` and `set_collapsed_many` exist
+because each *single* change reflows *and* re-runs the present band, so as the
+layout closes up the entries sliding into the band get presented — including
+the ones you are removing from view. Hiding a 200-entry group you are *looking
+at* costs 573 ms and **104 `present()` calls** one at a time, against 35 ms and
+8 batched; for a group off-screen, 201 ms against 43 ms with no presents either
+way.
+
+### Per-item collapse needs no library feature
+
+Collapsing *one* entry's own body is purely a presenter concern — keep a flag
+on your item, present a compact renderable when set, call `entry.update()`:
 
 ```python
-def collapse_group(header, children):
-    header.item.collapsed = True
-    header.update()                        # redraw the ▸ chevron
-    model.set_hidden_many(children, True)  # the group-collapse primitive
+async def present(self, entry, width):
+    if entry.item.collapsed:
+        return Presentation(height=1, renderable=Text(f"▸ {entry.item.title}"))
+    return Presentation(height=full, renderable=Panel(...))   # ▾ expanded
 ```
-
-**Collapse a group with `set_hidden_many`, not a loop of `hide()`.** Each single
-change reflows *and* re-runs the present band, so as the layout closes up the
-entries sliding into the band get presented — including the ones you are hiding.
-Collapsing a 200-entry group you are *looking at* costs 573 ms and **104
-`present()` calls** one at a time, against 35 ms and 8 batched; for a group
-off-screen, 201 ms against 43 ms with no presents either way.
-
-Which entries belong to a group is up to you — grouping policy varies by app,
-so the library ships the visibility primitive rather than a fixed hierarchy.
 
 ## Sticky headers
 
@@ -244,7 +306,7 @@ you cross group boundaries, and the next header pushes the previous one up:
 FlowView(
     model=model,
     presenter=presenter,
-    sticky_header=lambda e: e.item.kind == "header",
+    sticky_header=lambda e: bool(e.children),   # any group header
 )
 ```
 
@@ -299,21 +361,43 @@ See [`examples/minimap.py`](examples/minimap.py) (a 400-line scan log — errors
 
 ## Keys & focus
 
-FlowView is **unopinionated about keys** — it defines no `BINDINGS` of its own,
-so it never conflicts with your app's shortcuts. The only keys it responds to
-are the standard scroll keys (arrows, Home/End, PageUp/PageDown) inherited from
-Textual's `ScrollableContainer`, and only while the widget is focused — Textual
-resolves keys through the focus chain, so FlowView never globally captures them.
-<kbd>Ctrl</kbd>+<kbd>C</kbd> copy is Textual's own Screen binding, not ours.
+FlowView binds vim-style keys for the text cursor, visual selection and folding
+(see [Text cursor & visual mode](#text-cursor--visual-mode-vim-style)). They are
+ordinary Textual `BINDINGS`, resolved through the focus chain, so they apply
+only while the widget is focused and you can override or clear any of them —
+`c` toggles the cursor, `j`/`k` move it, `y` yanks, and the character-level keys
+bubble to your app while the cursor is hidden.
+
+Folding lives under the vim `z` prefix:
+
+| Keys | Action |
+| :- | :- |
+| `za` | fold / unfold the group at the cursor |
+| `zo` / `zc` | unfold / fold it |
+| `zR` / `zM` | unfold / fold **every** group, in one reflow |
+| `zz` / `zt` / `zb` | position the cursor line centre / top / bottom |
+
+`za`/`zo`/`zc` act on the current entry if it heads a group, else on the nearest
+ancestor that does — so pressing them anywhere inside a group folds the group
+you are in, as in vim. A two-key sequence can't be expressed as a `Binding`, so
+the `z` prefix is handled directly and is **not** overridable; intercept the key
+before it reaches the view if you need `z` for something else.
+
+Scroll keys (arrows, Home/End, PageUp/PageDown) come from Textual's
+`ScrollableContainer`; <kbd>Ctrl</kbd>+<kbd>C</kbd> copy is Textual's own Screen
+binding, not ours.
 
 Customize with any standard Textual mechanism:
 
 - override keys in your `App` / `Screen` / a `FlowView` subclass via `BINDINGS`;
-- set `flow.can_focus = False` so it never grabs scroll keys (wheel still works);
+- set `flow.can_focus = False` so it never grabs keys (wheel still works);
 - bind your own keys to the public methods (`scroll_to_bottom`, `find_next`,
-  `copy_entry`, …).
+  `copy_entry`, `toggle_fold`, `close_all_folds`, …).
 
-The library never binds a key to an action for you — that's your app's call.
+> **Watch for collisions.** FlowView owns single letters (`c`, `j`, `k`, `v`,
+> `y`, `g`, `n`, `w`, `b`, `e`, `z`, …) while focused. If your app binds one of
+> those, yours will not fire — rebind FlowView's, or bind on a widget outside
+> the focus chain.
 
 ## Spacing & full-row background
 
@@ -346,7 +430,8 @@ message reads as one continuous coloured block (no hand-rolled full-width grid,
 no gutter-colour coordination):
 
 ```python
-async def present(self, item, width):
+async def present(self, entry, width):
+    item = entry.item
     body = Text(item.text)
     return Presentation(
         height=..., renderable=body,
@@ -951,6 +1036,7 @@ if hit:
 | `scroll_to_entry(entry)` | Put `entry` at the top. |
 | `ensure_visible(entry)` | Scroll the minimum to reveal `entry`. |
 | `reveal(entry)` | Un-hide if collapsed, then ensure visible. |
+| `set_collapsed(entry, bool)` / `toggle_fold()` / `open_fold()` / `close_fold()` / `open_all_folds()` / `close_all_folds()` | Folding — the `z`-prefix keys, callable directly. |
 
 All four jump methods take `animate=True` (and an optional `duration`) for a
 smooth scroll instead of an instant snap — e.g. `flow.scroll_to_entry(hit,
@@ -992,7 +1078,7 @@ presented — scrolling through them (as a drag does) presents them first.
 ```bash
 PYTHONPATH=src python examples/dashboard.py       # 400 live hosts, viewport-scoped animation
 PYTHONPATH=src python examples/showcase.py       # live AI-agent activity feed
-PYTHONPATH=src python examples/groups.py          # collapsible groups + sticky headers
+PYTHONPATH=src python examples/groups.py          # nested groups, folding + sticky headers
 PYTHONPATH=src python examples/intervention.py    # clickable in-flow selector
 PYTHONPATH=src python examples/gutters.py         # two gutters: unread (left) + age (right)
 PYTHONPATH=src python examples/scroll_anim.py     # animated jumps, redirect, stop-in-place

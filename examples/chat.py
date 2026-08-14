@@ -18,6 +18,7 @@ from textual.widgets import Footer, Input
 
 from textual_flowview import (
     Anchor,
+    Entry,
     EntryState,
     FlowModel,
     FlowView,
@@ -41,7 +42,8 @@ class ChatMessage:
 class ChatPresenter:
     """Turns a ChatMessage into a Panel sized to the available width."""
 
-    async def present(self, item: ChatMessage, width: int) -> Presentation:
+    async def present(self, entry: Entry[ChatMessage], width: int) -> Presentation:
+        item = entry.item
         is_user = item.role == "user"
         style = "cyan" if is_user else "green"
         title = "You" if is_user else "Assistant"

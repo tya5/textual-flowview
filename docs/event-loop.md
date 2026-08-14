@@ -63,7 +63,7 @@ each call "small" while the loop never gets a turn.
 
 | Callback | Async? | Frequency | Notes |
 | :- | :- | :- | :- |
-| `FlowPresenter.present(item, width)` | **yes** (`async def`) | per entry, per revision, per width — **the hot one** | `await`ing here frees the loop; a pure-CPU body does not |
+| `FlowPresenter.present(entry, width)` | **yes** (`async def`) | per entry, per revision, per width — **the hot one** | `await`ing here frees the loop; a pure-CPU body does not |
 | `clipboard(text)` | **yes** (sync or async accepted) | per yank | its result is reported back, so it can't be fired and forgotten — hence async support |
 | `FlowDecorator.decorate(...)` (left/right) | no — painting is synchronous | per entry whose gutter state/size changed; every `animation_fps` tick | must not wait for anything |
 | `separator(above, below)` | no — painting | per adjacent pair drawn (cached) | |

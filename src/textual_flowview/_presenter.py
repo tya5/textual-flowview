@@ -1,26 +1,44 @@
 from __future__ import annotations
 
-from typing import Protocol, TypeVar, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, TypeVar, runtime_checkable
 
 from ._presentation import Presentation
 
+if TYPE_CHECKING:
+    from ._entry import Entry
+
 __all__ = ["FlowPresenter"]
 
-T_contra = TypeVar("T_contra", contravariant=True)
+# Invariant, not contravariant: the presenter now receives Entry[T], and
+# Entry is invariant in its item type.
+T = TypeVar("T")
 
 
 @runtime_checkable
-class FlowPresenter(Protocol[T_contra]):
-    """Converts a domain item into a :class:`Presentation`.
+class FlowPresenter(Protocol[T]):
+    """Converts an entry into a :class:`Presentation`.
 
     The presenter is the *only* component that knows the concrete item type.
     Implementations are always ``async`` (a synchronous body is fine — just
-    declare it ``async def``).
+    declare it ``async def``)::
 
-    ``present`` must be pure with respect to ``(item, width)``: given the same
-    item state and width it should produce an equivalent ``Presentation``.
-    The item's revision (bumped via ``entry.update()``) is what tells the view
-    that the item state changed and the result must be recomputed.
+        async def present(self, entry: Entry[Msg], width: int) -> Presentation:
+            item = entry.item
+            body = Text(("  " * entry.depth) + item.text)   # indent is yours
+            return Presentation(height=..., renderable=body)
+
+    You get the whole :class:`Entry`, not just the item, because some of what a
+    body draws is state FlowView owns rather than your item: :attr:`Entry.depth`
+    for indentation, :attr:`Entry.collapsed` for a ▸/▾ chevron. Mirroring those
+    into your own item would be the same fact stored twice.
+
+    ``present`` must be pure with respect to ``(entry state, width)``: given the
+    same entry state and width it should produce an equivalent ``Presentation``.
+    The entry's revision (bumped via ``entry.update()``) is what tells the view
+    the result must be recomputed — so a body that draws ``depth`` or
+    ``collapsed`` needs an ``update()`` when those change, exactly as for the
+    item's own fields (:meth:`FlowModel.set_collapsed_many` folds that into its
+    single reflow).
 
     .. warning::
 
@@ -41,4 +59,4 @@ class FlowPresenter(Protocol[T_contra]):
        ``docs/event-loop.md``.
     """
 
-    async def present(self, item: T_contra, width: int) -> Presentation: ...
+    async def present(self, entry: Entry[T], width: int) -> Presentation: ...

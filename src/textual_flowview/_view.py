@@ -260,6 +260,25 @@ class FlowView(ScrollView, Generic[T]):
         def control(self) -> FlowView[Any]:
             return self.flow_view
 
+    class Collapsed(Message):
+        """Posted when an entry's subtree is folded or unfolded — by the fold
+        keys, a click handler, or :meth:`FlowModel.set_collapsed_many`. ``entry``
+        is the header; ``collapsed`` is its new state. Batched folds post one
+        message per header, after the single reflow.
+        """
+
+        def __init__(
+            self, flow_view: FlowView[Any], entry: Entry[Any], collapsed: bool
+        ) -> None:
+            self.flow_view = flow_view
+            self.entry = entry
+            self.collapsed = collapsed
+            super().__init__()
+
+        @property
+        def control(self) -> FlowView[Any]:
+            return self.flow_view
+
     class Highlighted(Message):
         """Posted when the current entry **moves** — the cursor browsing across
         entries by keyboard or mouse (``selectable=True``). Fires
@@ -665,13 +684,53 @@ class FlowView(ScrollView, Generic[T]):
         self._refresh_layout(state)
         self._reanchor_cursor()
 
+    def on_flow_remove_many(self, entries: list[Entry[T]]) -> None:
+        # A subtree went with its parent. One capture/reflow for the lot.
+        doomed = {e.id for e in entries}
+        if self._current is not None and self._current.id in doomed:
+            self.set_current(None)
+        if self._tc_entry is not None and self._tc_entry.id in doomed:
+            self._tc_entry = None
+        state = self._capture()
+        for entry in entries:
+            self._stop_animation(entry.id)
+            self._drop_observers(entry.id)
+            self._visible_ids.discard(entry.id)
+            self._layout.discard(entry.id)
+            self._strip_cache.pop(entry.id, None)
+        self._viewport.set_entries(self._visible_entries())
+        self._refresh_layout(state)
+        self._reanchor_cursor()
+
+    def on_flow_collapse(self, entries: list[Entry[T]], collapsed: bool) -> None:
+        # A batch of subtrees folded or unfolded. Same reflow as a visibility
+        # change — descendants keep their presentations, so this never
+        # re-presents a body — plus a Collapsed message per header.
+        #
+        # If the cursor was inside a subtree that just folded away, land it on
+        # the header being folded rather than clearing it: the reader's place in
+        # the document is the group, and that is what is still on screen.
+        current = self._current
+        if collapsed and current is not None and not current.visible:
+            landing = next(
+                (a for a in current.ancestors() if a in entries), None
+            )
+            self.set_current(landing)
+        state = self._capture()
+        self._viewport.set_entries(self._visible_entries())
+        self._refresh_layout(state)
+        self._present_visible()
+        self._reanchor_cursor()
+        for entry in entries:
+            self.post_message(self.Collapsed(self, entry, collapsed))
+
     def on_flow_visibility_many(self, entries: list[Entry[T]]) -> None:
         # A batch of entries changed visibility (a group collapsed/expanded).
         # One reflow and one present pass for the whole batch — doing it per
         # entry reflows N times and, worse, re-runs the present band each time,
         # so entries sliding into the band while the layout closes up get
         # presented on their way out of view.
-        if any(e.hidden and self._current is e for e in entries):
+        if self._current is not None and not self._current.visible:
             self.set_current(None)
         state = self._capture()
         self._viewport.set_entries(self._visible_entries())
@@ -683,7 +742,7 @@ class FlowView(ScrollView, Generic[T]):
         # Which entries are visible changed (a group collapsed/expanded). Rebuild
         # the viewport's entry list and reflow — but keep every cached
         # presentation, so hiding/showing is instant and never re-presents.
-        if entry.hidden and self._current is entry:
+        if self._current is not None and not self._current.visible:
             self.set_current(None)
         state = self._capture()
         self._viewport.set_entries(self._visible_entries())
@@ -1281,7 +1340,7 @@ class FlowView(ScrollView, Generic[T]):
             return
         revision = entry.revision
         try:
-            presentation = await self._presenter.present(entry.item, width)
+            presentation = await self._presenter.present(entry, width)
         except Exception as exc:  # mirror the present loop's error handling
             presentation = self._error_presentation(exc)
         if entry.alive:
@@ -1531,26 +1590,92 @@ class FlowView(ScrollView, Generic[T]):
         self._render_cursor()
 
     def on_key(self, event: events.Key) -> None:
-        # Two-key vim prefix zz/zt/zb (position the cursor within the viewport),
-        # live only when the cursor is engaged. `g`/`G` are single-key bindings;
-        # other motions are normal, overridable BINDINGS.
-        if not self._text_active():
-            return
+        # The two-key vim `z` prefix. Folds (za/zo/zc/zR/zM) are always live;
+        # the cursor-positioning half (zz/zt/zb) only when the text cursor is
+        # engaged. `g`/`G` are single-key bindings; other motions are normal,
+        # overridable BINDINGS. A two-key sequence can't be expressed as a
+        # Binding, so this one is handled here and is not overridable — rebind
+        # by handling the key before it reaches the view.
         pending, self._tc_pending = self._tc_pending, ""
+        key = event.character or event.key
         if pending == "z":
-            if event.key == "z":
+            handled = True
+            if key == "a":
+                self.toggle_fold()
+            elif key == "o":
+                self.open_fold()
+            elif key == "c":
+                self.close_fold()
+            elif key == "R":
+                self.open_all_folds()
+            elif key == "M":
+                self.close_all_folds()
+            elif not self._text_active():
+                handled = False
+            elif key == "z":
                 self.cursor_scroll_center()
-            elif event.key == "t":
+            elif key == "t":
                 self.cursor_scroll_to_top()
-            elif event.key == "b":
+            elif key == "b":
                 self.cursor_scroll_to_bottom()
-            event.stop()
-            event.prevent_default()
+            else:
+                handled = False
+            if handled:
+                event.stop()
+                event.prevent_default()
             return
-        if event.key == "z":
-            self._tc_pending = event.key
+        if key == "z":
+            self._tc_pending = "z"
             event.stop()
             event.prevent_default()
+
+    # -- folding -----------------------------------------------------------
+
+    def _fold_target(self) -> Entry[T] | None:
+        """The entry `za`/`zo`/`zc` act on: the current entry if it heads a
+        group, else the nearest ancestor that does — so pressing the fold key
+        anywhere inside a group folds the group you are in, as in vim."""
+        entry = self._current
+        while entry is not None and not entry.children:
+            entry = entry.parent
+        return entry
+
+    def toggle_fold(self) -> None:
+        """Fold or unfold the group at the cursor (``za``)."""
+        target = self._fold_target()
+        if target is not None:
+            self.set_collapsed(target, not target.collapsed)
+
+    def open_fold(self) -> None:
+        """Unfold the group at the cursor (``zo``)."""
+        target = self._fold_target()
+        if target is not None:
+            self.set_collapsed(target, False)
+
+    def close_fold(self) -> None:
+        """Fold the group at the cursor (``zc``)."""
+        target = self._fold_target()
+        if target is not None:
+            self.set_collapsed(target, True)
+
+    def open_all_folds(self) -> None:
+        """Unfold every group in the model, in one reflow (``zR``)."""
+        self._set_all_folds(False)
+
+    def close_all_folds(self) -> None:
+        """Fold every group in the model, in one reflow (``zM``)."""
+        self._set_all_folds(True)
+
+    def set_collapsed(self, entry: Entry[T], collapsed: bool) -> None:
+        """Fold or unfold ``entry``'s subtree, posting :class:`Collapsed`. The
+        view-level equivalent of :meth:`Entry.set_collapsed`, for wiring to a
+        click or a binding of your own."""
+        entry.set_collapsed(collapsed)
+
+    def _set_all_folds(self, collapsed: bool) -> None:
+        self._model.set_collapsed_many(
+            [e for e in self._model if e.children], collapsed
+        )
 
     # -- viewport-scoped resource lifecycle --------------------------------
 
@@ -2409,7 +2534,7 @@ class FlowView(ScrollView, Generic[T]):
                     break
                 errored = False
                 try:
-                    presentation = await self._presenter.present(entry.item, width)
+                    presentation = await self._presenter.present(entry, width)
                 except Exception as exc:
                     presentation = self._error_presentation(exc)
                     errored = True
@@ -2437,9 +2562,9 @@ class FlowView(ScrollView, Generic[T]):
     # -- geometry helpers --------------------------------------------------
 
     def _visible_entries(self) -> list[Entry[T]]:
-        """Model order with hidden entries filtered out — the set the viewport
-        actually lays out and draws."""
-        return [entry for entry in self._model if not entry.hidden]
+        """Document order with hidden entries and folded subtrees filtered out —
+        the set the viewport actually lays out and draws."""
+        return self._model.visible_entries()
 
     def _content_width(self) -> int:
         region = self.scrollable_content_region

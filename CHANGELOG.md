@@ -7,6 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-08-14
+
+Nested groups with folding (#13). FlowView now owns the tree.
+
+### Changed — breaking
+
+- **`FlowPresenter.present` receives the `Entry`, not the item**:
+  `async def present(self, entry: Entry[T], width: int)`. Migration is
+  mechanical — read `entry.item` where you read `item`. The reason is that some
+  of what a body draws is now state FlowView owns rather than your item
+  (`entry.depth` for indentation, `entry.collapsed` for a ▸/▾ chevron), and
+  mirroring those into your own item would be the same fact stored twice. It
+  also removes the long-standing asymmetry with `FlowDecorator.decorate`, which
+  has always received the entry.
+- **`FlowModel.insert` / `insert_many`'s index is a position among siblings.**
+  Identical to the old behaviour for a flat model; only meaningful once you
+  pass `parent=`.
+- **Removing an entry removes its subtree** — a child cannot outlive the parent
+  that positions it.
+
+### Added
+
+- **Tree**: `model.append(item, parent=entry)` (also `insert`, `insert_many`,
+  `extend`), `entry.append_child(item)` / `insert_child(index, item)`, and
+  read-only `entry.parent` / `children` / `depth` / `ancestors()` /
+  `descendants()`. Nesting is arbitrary; the model iterates in document order
+  (each parent immediately followed by its subtree). `visible_entries()` is one
+  pass, O(entries) regardless of depth, because a folded subtree is contiguous
+  and can be skipped wholesale.
+- **Folding**: `entry.collapse()` / `expand()` / `toggle_collapsed()` /
+  `set_collapsed()` / `collapsed`, and `FlowModel.set_collapsed_many(entries,
+  collapsed)` for many subtrees in one reflow. Descendants keep their cached
+  presentations, so folding never re-presents what it hides; the header itself
+  re-presents, since its body may draw the fold state.
+- **`collapsed` is independent of `hidden`.** `hidden` is about *this* entry
+  (the filtering primitive); `collapsed` is about its *subtree*. A search filter
+  and a fold now compose instead of fighting over one flag — unfolding a group
+  does not resurrect entries a filter hid. `entry.visible` reports the
+  combination. A hidden parent still hides its subtree.
+- **Fold keys** under the existing vim `z` prefix: `za` (toggle), `zo`, `zc`,
+  `zR` (unfold all), `zM` (fold all). `za`/`zo`/`zc` act on the current entry if
+  it heads a group, else the nearest ancestor that does — so they fold the group
+  you are *in*, as in vim. Callable directly as `toggle_fold()`, `open_fold()`,
+  `close_fold()`, `open_all_folds()`, `close_all_folds()`, `set_collapsed(entry,
+  bool)`.
+- **`FlowView.Collapsed`** message (`entry`, `collapsed`), posted after the
+  single reflow — one per header for a batch.
+
+### Notes
+
+- A parent is an **ordinary entry**: same presenter, same gutter, no
+  special-casing anywhere in the view. FlowView never indents, never draws
+  chevrons or tree guides. `entry.depth` is data; the drawing is yours.
+- **Reserve the scrollbar gutter if you fold large groups**
+  (`FlowView { scrollbar-gutter: stable; }`). A fold that shrinks content below
+  the viewport removes the scrollbar, which widens the body — and width is part
+  of the presentation cache key, so everything re-presents. Measured on a
+  50-entry group: 0 presents with the gutter reserved, 12 without. Not new
+  (`hide()` did this too), but folding makes it easy to hit.
+- Verified: folding preserves the scroll anchor; a never-expanded group is never
+  presented at all.
+
+### Fixed
+
+- README's "Keys & focus" claimed FlowView "defines no `BINDINGS` of its own",
+  which stopped being true in 0.14.0 when the vim cursor keys landed. Replaced
+  with the actual key list and a collision warning.
+
+
 ## [0.20.0] - 2026-08-14
 
 ### Added

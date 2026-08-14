@@ -47,7 +47,7 @@ from rich.table import Table
 from rich.text import Text
 from textual.app import App, ComposeResult
 
-from textual_flowview import FlowModel, FlowView, Presentation
+from textual_flowview import Entry, FlowModel, FlowView, Presentation
 
 try:
     from PIL import Image as PILImage
@@ -124,7 +124,8 @@ class MessagePresenter:
     def __init__(self) -> None:
         self._probe = Console()
 
-    async def present(self, item: Message, width: int) -> Presentation:
+    async def present(self, entry: Entry[Message], width: int) -> Presentation:
+        item = entry.item
         style = f"bold rgb({item.color[0]},{item.color[1]},{item.color[2]})"
         # avatar (3 cell-rows) beside name + body — one entry, image + text mixed
         avatar = HalfBlockImage(item.avatar(), width=6, height=3)

@@ -9,7 +9,7 @@ from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import BindingType
 
-from textual_flowview import FlowModel, FlowView, Presentation
+from textual_flowview import Entry, FlowModel, FlowView, Presentation
 
 
 @dataclass
@@ -18,7 +18,8 @@ class Row:
 
 
 class RowPresenter:
-    async def present(self, item: Row, width: int) -> Presentation:
+    async def present(self, entry: Entry[Row], width: int) -> Presentation:
+        item = entry.item
         return Presentation(height=1, renderable=Text(item.text))
 
 
@@ -348,7 +349,8 @@ async def test_cursor_rides_content_changes() -> None:
 @pytest.mark.asyncio
 async def test_cursor_entry_start_end() -> None:
     class TallPresenter:
-        async def present(self, item: Row, width: int) -> Presentation:
+        async def present(self, entry: Entry[Row], width: int) -> Presentation:
+            item = entry.item
             return Presentation(height=3, renderable=Text(f"{item.text}\n.\n."))
 
     model: FlowModel[Row] = FlowModel()

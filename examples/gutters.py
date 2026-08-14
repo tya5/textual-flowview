@@ -63,7 +63,8 @@ class Note:
 
 
 class NotePresenter:
-    async def present(self, item: Note, width: int) -> Presentation:
+    async def present(self, entry: Entry[Note], width: int) -> Presentation:
+        item = entry.item
         subject = Text(item.subject, style="bold")
         subject.append(f"   {item.sender}", style="grey54")
         preview = Text(item.preview, style="grey42", overflow="ellipsis", no_wrap=True)

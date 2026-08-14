@@ -26,7 +26,7 @@ from rich.console import Group, RenderableType
 from rich.text import Text
 from textual.app import App, ComposeResult
 
-from textual_flowview import FlowModel, FlowView, Presentation
+from textual_flowview import Entry, FlowModel, FlowView, Presentation
 
 try:
     from PIL import Image, ImageDraw, ImageSequence
@@ -75,7 +75,8 @@ class Post:
 
 
 class Presenter:
-    async def present(self, item: Post, width: int) -> Presentation:
+    async def present(self, entry: Entry[Post], width: int) -> Presentation:
+        item = entry.item
         header = Text.assemble((item.name, "bold cyan"), ("  ", ""), (item.body, "grey85"))
         if not item.gif:
             return Presentation(height=1, renderable=header)

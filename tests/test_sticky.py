@@ -6,7 +6,7 @@ import pytest
 from rich.text import Text
 from textual.app import App, ComposeResult
 
-from textual_flowview import FlowModel, FlowView, Presentation
+from textual_flowview import Entry, FlowModel, FlowView, Presentation
 
 
 @dataclass
@@ -16,7 +16,8 @@ class Node:
 
 
 class NodePresenter:
-    async def present(self, item: Node, width: int) -> Presentation:
+    async def present(self, entry: Entry[Node], width: int) -> Presentation:
+        item = entry.item
         if item.kind == "header":
             return Presentation(height=2, renderable=Text(f"{item.label}\n="))
         return Presentation(height=1, renderable=Text(item.label))

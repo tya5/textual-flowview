@@ -48,7 +48,8 @@ class Host:
 
 
 class HostPresenter:
-    async def present(self, item: Host, width: int) -> Presentation:
+    async def present(self, entry: Entry[Host], width: int) -> Presentation:
+        item = entry.item
         head = Text.assemble((f"{item.name:<16}", "bold"))
         bar = ProgressBar(total=100, completed=item.cpu, width=28, finished_style="red")
         top = Text.assemble(head, ("  ", ""))

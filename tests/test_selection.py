@@ -15,7 +15,8 @@ class Row:
 
 
 class RowPresenter:
-    async def present(self, item: Row, width: int) -> Presentation:
+    async def present(self, entry: Entry[Row], width: int) -> Presentation:
+        item = entry.item
         return Presentation(height=2, renderable=Text(f"{item.text}\n{item.text}"))
 
 

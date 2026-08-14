@@ -26,7 +26,7 @@ from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.widgets import Footer, Header
 
-from textual_flowview import FlowModel, FlowView, Presentation
+from textual_flowview import Entry, FlowModel, FlowView, Presentation
 
 LINES = [
     "The quick brown fox jumps over the lazy dog.",
@@ -45,7 +45,8 @@ class Para:
 
 
 class ParaPresenter:
-    async def present(self, item: Para, width: int) -> Presentation:
+    async def present(self, entry: Entry[Para], width: int) -> Presentation:
+        item = entry.item
         return Presentation(height=1, renderable=Text(item.text))
 
 

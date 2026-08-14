@@ -108,7 +108,8 @@ class ActivityPresenter:
 
         self._probe = Console()
 
-    async def present(self, item: Event, width: int) -> Presentation:
+    async def present(self, entry: Entry[Event], width: int) -> Presentation:
+        item = entry.item
         border = KIND_COLOR.get(item.kind, "grey50")
         chevron = "▸" if item.collapsed else "▾"
         title = Text.assemble(

@@ -34,7 +34,7 @@ from textual import events
 from textual.app import App, ComposeResult
 from textual.widgets import Footer, Header
 
-from textual_flowview import FlowModel, FlowView, Presentation
+from textual_flowview import Entry, FlowModel, FlowView, Presentation
 
 try:
     from terminaltexteffects.effects.effect_beams import Beams
@@ -91,7 +91,8 @@ class DissolveScreen:
 
 
 class LinePresenter:
-    async def present(self, item: str, width: int) -> Presentation:
+    async def present(self, entry: Entry[str], width: int) -> Presentation:
+        item = entry.item
         return Presentation(height=1, renderable=Text(item, style="grey62"))
 
 

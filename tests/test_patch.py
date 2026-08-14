@@ -6,7 +6,7 @@ from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.strip import Strip
 
-from textual_flowview import FlowModel, FlowView, Presentation
+from textual_flowview import Entry, FlowModel, FlowView, Presentation
 
 
 class CountingPresenter:
@@ -16,7 +16,8 @@ class CountingPresenter:
     def __init__(self) -> None:
         self.calls = 0
 
-    async def present(self, item: str, width: int) -> Presentation:
+    async def present(self, entry: Entry[str], width: int) -> Presentation:
+        item = entry.item
         self.calls += 1
         lines = item.split("\n")
         return Presentation(height=len(lines), renderable=Text(item))
@@ -93,7 +94,8 @@ async def test_patch_rows_replaces_the_growing_tail_line() -> None:
 async def test_presentation_strips_drawn_directly() -> None:
     # A presenter can return pre-rendered strips; FlowView draws them as-is.
     class StripPresenter:
-        async def present(self, item: str, width: int) -> Presentation:
+        async def present(self, entry: Entry[str], width: int) -> Presentation:
+            item = entry.item
             lines = item.split("\n")
             return Presentation(height=len(lines), strips=[_strip(s) for s in lines])
 
