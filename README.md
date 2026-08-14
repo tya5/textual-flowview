@@ -206,6 +206,19 @@ group.collapsed           # bool
 model.set_collapsed_many(groups, True)   # many subtrees, ONE reflow
 ```
 
+**A group can be declared folded before it has any children** — say it once at
+registration instead of watching for the first child to land:
+
+```python
+group = model.append(ToolCall("search"))
+group.collapse()                       # no children yet; the intent is kept
+group.append_child(LogLine("hit 1"))   # born folded
+```
+
+Folding something with no subtree draws nothing, so it neither re-presents nor
+posts `Collapsed`; the state is simply recorded, and visibility resolves it when
+children arrive.
+
 Reading the shape:
 
 ```python
@@ -236,9 +249,12 @@ async def present(self, entry: Entry[Node], width: int) -> Presentation:
 
 FlowView never indents, never draws chevrons or tree guides, and never renders
 a parent differently — it lays out and clips rows, exactly as for a flat feed.
-Folding bumps the header's revision (its body may draw the chevron) and leaves
-every descendant's cached presentation alone, so a fold never re-presents what
-it hides. See [`examples/groups.py`](examples/groups.py).
+
+Because the body may draw them, **structural changes bump the header's
+revision**: folding, and gaining or losing a child. So a header that shows
+`len(entry.children)` or a ▸/▾ chevron stays correct without you calling
+`update()` by hand. Descendants' cached presentations are untouched, so a fold
+never re-presents what it hides. See [`examples/groups.py`](examples/groups.py).
 
 ### Folding is O(1) in what you fold
 

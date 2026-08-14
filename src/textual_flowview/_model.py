@@ -131,6 +131,11 @@ class FlowModel(Generic[T]):
         if not entries:
             return entries
         self._flat = None
+        if parent is not None:
+            # The parent's own body may draw `entry.children` — a ▸/▾ chevron, a
+            # "12 steps" summary — so becoming (or growing) a group is a content
+            # change for it, exactly as folding is.
+            parent._revision += 1
         if self._listener is not None:
             if len(entries) == 1:
                 self._listener.on_flow_insert(entries[0], index)
@@ -208,17 +213,23 @@ class FlowModel(Generic[T]):
         The headers themselves are *not* re-presented. If their bodies show the
         fold state (a ▸/▾ chevron), call :meth:`Entry.update` on them first: the
         pending re-presents are picked up by this call's single reflow."""
-        changed = [
-            e for e in entries
-            if e.alive and e._children and e._collapsed != collapsed
-        ]
+        changed = [e for e in entries if e.alive and e._collapsed != collapsed]
         if not changed:
             return
+        # Recording the intent and redrawing are two jobs. An entry with no
+        # children yet still *stores* the state — that is how "this group starts
+        # folded" is declared before its first child arrives, and a child
+        # appended later is born folded because visibility walks its ancestors.
+        # Only the notify/re-present half is skipped, because folding something
+        # with no subtree changes nothing on screen.
+        notify: list[Entry[T]] = []
         for entry in changed:
             entry._collapsed = collapsed
-            entry._revision += 1  # the header's own body may draw the chevron
-        if self._listener is not None:
-            self._listener.on_flow_collapse(changed, collapsed)
+            if entry._children:
+                entry._revision += 1  # the header's own body may draw the chevron
+                notify.append(entry)
+        if notify and self._listener is not None:
+            self._listener.on_flow_collapse(notify, collapsed)
 
     def _on_entry_removed(self, entry: Entry[T]) -> None:
         siblings = self._roots if entry._parent is None else entry._parent._children
@@ -228,6 +239,8 @@ class FlowModel(Generic[T]):
             return
         del siblings[index]
         self._flat = None
+        if entry._parent is not None:
+            entry._parent._revision += 1  # its child count changed
         # Removing an entry removes what hangs under it — a child cannot outlive
         # the parent that positions it.
         doomed = [entry, *entry.descendants()]

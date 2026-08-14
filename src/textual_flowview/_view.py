@@ -626,7 +626,7 @@ class FlowView(ScrollView, Generic[T]):
     def on_flow_update(self, entry: Entry[T]) -> None:
         # The revision bump already makes the cached presentation a miss.
         self._strip_cache.pop(entry.id, None)
-        if entry.id not in self._band_ids:
+        if not self._in_band(entry):
             # Off-screen: skip the present + reflow. The new revision is a cache
             # miss, so the entry re-presents (and reflows) lazily when it scrolls
             # into view — no wasted work for an update no one can see. Its layout
@@ -663,7 +663,7 @@ class FlowView(ScrollView, Generic[T]):
         pres = Presentation(height=len(new_strips), strips=new_strips)
         self._layout.store(entry.id, width, entry.revision, pres)
         self._strip_cache[entry.id] = (entry.revision, width, new_strips)
-        if entry.id not in self._band_ids:
+        if not self._in_band(entry):
             return  # off-screen: cached; reflows lazily when scrolled in
         state = self._capture()
         self._refresh_layout(state, dirty_entry=entry)
@@ -2420,11 +2420,23 @@ class FlowView(ScrollView, Generic[T]):
     def _entry_strips(self, entry: Entry[T], width: int) -> list[Strip]:
         presentation = self._layout.get(entry, width)
         if presentation is None:
-            # Not presented at this width/revision yet: show placeholder and
-            # kick off (deduped) presentation.
+            # Not presented at this width/revision yet: kick off the (deduped)
+            # presentation. Until it lands, keep drawing the *previous* body if
+            # there is one — an entry that is merely being re-presented must not
+            # blink through the placeholder. Streaming bumps the revision many
+            # times a second, and every one of those was a frame of "Loading…"
+            # over content the reader was mid-sentence in. The placeholder is
+            # for an entry that has never had a body, not for one that has.
             self._present_entry(entry)
+            previous = self._layout.superseded(entry.id, width)
+            if previous is None:
+                return self._render_to_strips(
+                    self._placeholder, width, self._viewport.estimated_height
+                )
+            if previous.strips is not None:
+                return [s.adjust_cell_length(width) for s in previous.strips]
             return self._render_to_strips(
-                self._placeholder, width, self._viewport.estimated_height
+                previous.renderable, width, previous.height
             )
         cached = self._strip_cache.get(entry.id)
         if cached is not None and cached[0] == entry.revision and cached[1] == width:
@@ -2669,6 +2681,17 @@ class FlowView(ScrollView, Generic[T]):
         so the read-ahead band is cheap once warm."""
         if self._content_width() <= 0:
             return
+        top, bottom = self._band_range()
+        band = self._viewport.entries_between(top, bottom)
+        self._band_ids = {entry.id for entry in band}
+        for entry in band:
+            self._present_entry(entry)
+        self._trim_paint_caches()
+        self._sync_visibility()
+
+    def _band_range(self) -> tuple[int, int]:
+        """The virtual y-range currently worth presenting: the viewport plus
+        overscan plus a read-ahead biased in the scroll direction."""
         self._sync_geometry()
         self._sync_scroll()
         height = self._viewport.height
@@ -2676,14 +2699,27 @@ class FlowView(ScrollView, Generic[T]):
         ahead = self._read_ahead if self._read_ahead is not None else height
         up = overscan + (ahead if self._scroll_dir < 0 else 0)
         down = overscan + (ahead if self._scroll_dir > 0 else 0)
-        top = self._viewport.scroll_y - up
-        bottom = self._viewport.scroll_y + height + down
-        band = self._viewport.entries_between(top, bottom)
-        self._band_ids = {entry.id for entry in band}
-        for entry in band:
-            self._present_entry(entry)
-        self._trim_paint_caches()
-        self._sync_visibility()
+        return (
+            self._viewport.scroll_y - up,
+            self._viewport.scroll_y + height + down,
+        )
+
+    def _in_band(self, entry: Entry[T]) -> bool:
+        """Whether ``entry`` currently falls in the present band.
+
+        Computed, not read from ``_band_ids``: that set is only refreshed by
+        ``_present_visible``, so after an ``append`` (whose entry is presented
+        lazily by the paint path) it is stale — and treating an on-screen entry
+        as off-band makes ``update()`` *release* the body the reader is looking
+        at, blanking it to the placeholder until the re-present lands.
+        """
+        if self._content_width() <= 0:
+            return False
+        offset = self._viewport.offset_of(entry)
+        if offset is None:
+            return False
+        top, bottom = self._band_range()
+        return offset < bottom and offset + self._viewport.height_of(entry) > top
 
     def _trim_paint_caches(self) -> None:
         """Drop cached paint output — body strips, gutters, separators — for

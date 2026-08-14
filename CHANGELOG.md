@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-08-15
+
+Three defects found while checking #14 — the first as reported, the other two
+uncovered by verifying it.
+
+### Fixed
+
+- **A group can now be declared folded before its first child exists** (#14).
+  `set_collapsed` silently discarded the state on an entry with no children, so
+  "this group starts folded" could not be said at the moment it was known; a
+  host had to watch its own `append_child` and fold on the first one. One guard
+  was doing two jobs — recording the intent, and skipping a redraw that would
+  change no pixels — and the second erased the first. Now the state is recorded
+  on any live entry and only the notify/re-present half is skipped; a child
+  appended later walks its ancestors and is born folded. Reported by reyn.
+- **A parent now re-presents when it gains or loses a child.** Since 0.21.0 the
+  presenter receives the entry, so a header's body may draw `entry.children` —
+  a ▸/▾ chevron, a "12 steps" count. Nothing invalidated that presentation, so
+  a header kept rendering `group (0)` with no chevron forever after its first
+  child arrived. Child insertion and removal now bump the parent's revision, on
+  the same reasoning that already applied to folding.
+- **`update()` no longer blinks the entry through the "Loading…" placeholder.**
+  The worst of the three, and pre-existing. `_band_ids` is only refreshed by
+  `_present_visible`, which a plain `append` never calls — so an entry that was
+  presented by the paint path was classified **off-band while fully on screen**,
+  and `update()` took the off-screen branch and *released* its presentation.
+  Every streamed chunk therefore painted a frame of the placeholder over content
+  the reader was mid-sentence in (measured: 5 of 5 immediate paints after
+  `update()` rendered "Loading…"; now 0). Two changes: band membership is
+  computed rather than read from a set that may be stale, and a re-present keeps
+  drawing the **previous** body until the new one lands — the placeholder is for
+  an entry that has never had a body, not one that has. Consumers streaming via
+  `patch_rows` were unaffected, since that path stores synchronously.
+
+  The memory optimisation the band check exists for is intact and now tested: an
+  entry genuinely out of view still releases its body on `update()`.
+
+
 ## [0.21.1] - 2026-08-14
 
 ### Fixed

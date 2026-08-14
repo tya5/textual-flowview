@@ -145,11 +145,50 @@ def test_hidden_parent_hides_its_subtree() -> None:
     assert not n["a1x"].visible
 
 
-def test_collapse_is_a_noop_on_a_leaf() -> None:
+def test_a_leaf_records_the_fold_but_draws_nothing() -> None:
+    """Folding something with no subtree changes no pixels, so it must not
+    notify — but the state is still recorded, which is how "starts folded" is
+    declared before the first child exists."""
     m, n = _tree()
+    seen: list[int] = []
+
+    class Spy:
+        def on_flow_collapse(self, entries, collapsed) -> None:
+            seen.append(len(entries))
+
+        def __getattr__(self, _name):
+            return lambda *a, **k: None
+
+    m._attach(Spy())
     n["a2"].collapse()
-    assert n["a2"].collapsed is False
+    assert n["a2"].collapsed is True     # intent recorded
+    assert seen == []                    # but nothing to redraw
     assert len(m.visible_entries()) == 6
+
+
+def test_a_group_can_start_folded_before_its_first_child() -> None:
+    m: FlowModel[Row] = FlowModel()
+    group = m.append(Row("group"))
+    group.collapse()                     # declared at registration time
+    child = group.append_child(Row("c1"))
+    assert child.visible is False, "a child of a folded parent is born folded"
+    assert _texts(m.visible_entries()) == ["group"]
+    group.expand()
+    assert _texts(m.visible_entries()) == ["group", "c1"]
+
+
+def test_gaining_or_losing_a_child_re_presents_the_parent() -> None:
+    """The parent's body may draw `entry.children` — a chevron, a count — so
+    becoming or growing a group is a content change for it."""
+    m: FlowModel[Row] = FlowModel()
+    group = m.append(Row("group"))
+    assert group.revision == 0
+    child = group.append_child(Row("c1"))
+    assert group.revision == 1
+    group.append_child(Row("c2"))
+    assert group.revision == 2
+    child.remove()
+    assert group.revision == 3
 
 
 def test_set_collapsed_many_batches_and_skips_noops() -> None:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import pytest
 from rich.text import Text
 from textual.app import App, ComposeResult
@@ -238,3 +240,79 @@ async def test_gutter_and_separator_caches_are_bounded_too() -> None:
         assert len(v._strip_cache) <= limit
         assert len(v._gutter_cache) <= limit
         assert len(v._separator_cache) <= limit
+
+
+@dataclass
+class Chunk:
+    text: str
+
+
+class ChunkPresenter:
+    async def present(self, entry: Entry[Chunk], width: int) -> Presentation:
+        return Presentation(height=1, renderable=Text(entry.item.text))
+
+
+def _stream_app(model: FlowModel[Chunk]) -> App:
+    class StreamApp(App):
+        CSS = "FlowView { scrollbar-gutter: stable; }"
+
+        def compose(self) -> ComposeResult:
+            yield FlowView(model=model, presenter=ChunkPresenter(), spacing=0)
+
+    return StreamApp()
+
+
+@pytest.mark.asyncio
+async def test_update_never_blinks_through_the_placeholder() -> None:
+    """A re-present must keep drawing the previous body until the new one lands.
+
+    Presentation is async, so a paint can land between the revision bump and the
+    worker's result. Before this was fixed, `_band_ids` was only refreshed by
+    `_present_visible` — never by a plain `append` — so an on-screen entry was
+    classified off-band, its presentation *released*, and every streamed chunk
+    painted a frame of "Loading..." over content the reader was mid-sentence in.
+    """
+    model: FlowModel[Chunk] = FlowModel()
+    async with _stream_app(model).run_test(size=(50, 12)) as pilot:
+        view = pilot.app.query_one(FlowView)
+        await pilot.pause()
+        entry = model.append(Chunk("stream"))
+        await pilot.pause()
+
+        painted = []
+        for i in range(5):
+            entry.item.text = f"chunk {i}"
+            entry.update()
+            offset = view._viewport.offset_of(entry)
+            assert offset is not None
+            painted.append(view.render_line(offset).text.rstrip())
+            await pilot.pause()
+
+        assert not any("Loading" in row for row in painted), painted
+        await pilot.pause()
+        offset = view._viewport.offset_of(entry)
+        assert offset is not None
+        assert "chunk 4" in view.render_line(offset).text
+
+
+@pytest.mark.asyncio
+async def test_offscreen_update_still_releases_its_presentation() -> None:
+    """The memory optimisation the band check exists for must survive the fix:
+    an entry genuinely out of view still drops its cached body on update()."""
+    model: FlowModel[Chunk] = FlowModel()
+    entries = [model.append(Chunk(f"r{i}")) for i in range(400)]
+    async with _stream_app(model).run_test(size=(50, 12)) as pilot:
+        view = pilot.app.query_one(FlowView)
+        await pilot.pause()
+        far = entries[-1]
+        view.scroll_to_bottom(animate=False)
+        await pilot.pause()
+        width = view._body_width()
+        assert view._layout.get(far, width) is not None
+
+        view.scroll_to_top(animate=False)
+        await pilot.pause()
+        assert not view._in_band(far)
+        far.item.text = "changed"
+        far.update()
+        assert view._layout.superseded(far.id, width) is None, "should be released"

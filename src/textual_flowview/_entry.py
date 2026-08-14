@@ -189,6 +189,10 @@ class Entry(Generic[T]):
         its children, its subtree with it). A filter that hides entries and a
         fold that collapses them therefore compose instead of fighting over one
         flag.
+
+        Independent of whether the subtree exists yet: an entry with no children
+        can hold ``collapsed=True``, so a group can be declared folded before
+        its first child arrives.
         """
         return self._collapsed
 
@@ -221,8 +225,14 @@ class Entry(Generic[T]):
         re-presents them. *This* entry does re-present: its body is free to draw
         the fold state (a ▸/▾ chevron, a "12 steps" summary) now that presenters
         receive the entry, so a fold is a content change for the header and the
-        revision bumps accordingly. A no-op on a removed entry, a leaf, or when
-        unchanged."""
+        revision bumps accordingly.
+
+        Safe to call **before the first child exists** — that is how a group
+        declares "I start folded" at registration time. The state is recorded on
+        any live entry; a child appended later checks its ancestors and is born
+        folded. Folding something with no subtree simply draws nothing, so it
+        neither re-presents nor posts :class:`FlowView.Collapsed`. A no-op on a
+        removed entry or when unchanged."""
         self._model.set_collapsed_many([self], collapsed)
 
     def set_state(self, state: EntryState) -> None:

@@ -51,6 +51,20 @@ class FlowLayout(Generic[T]):
         *current* revision, or ``None`` on a miss."""
         return self._cache.get((entry.id, width, entry.revision))
 
+    def superseded(self, entry_id: int, width: int) -> Presentation | None:
+        """The presentation cached for ``entry_id`` at ``width`` under some
+        *other* revision, or ``None``.
+
+        Only one revision per ``(id, width)`` is ever retained, so this is the
+        entry's previous body — still perfectly drawable, just one revision
+        behind. The view paints it while the new revision presents, instead of
+        blanking content that is only being *updated* to a placeholder.
+        """
+        for key in self._by_entry.get(entry_id, ()):
+            if key[1] == width:
+                return self._cache.get(key)
+        return None
+
     def height(self, entry: Entry[T], width: int) -> int | None:
         """Cached height for ``entry`` at ``width``, or ``None`` if not yet
         presented at that width/revision."""
