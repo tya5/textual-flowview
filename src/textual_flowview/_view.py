@@ -307,7 +307,7 @@ class FlowView(ScrollView, Generic[T]):
         selectable: bool = False,
         cursor: bool = False,
         cursor_scrolloff: int = 0,
-        clipboard: Callable[[str], bool | None | Awaitable[bool | None]] | None = None,
+        clipboard: Callable[[str], bool | Awaitable[bool | None] | None] | None = None,
         search_text: Callable[[T], str] | None = None,
         sticky_header: Callable[[Entry[T]], bool] | None = None,
         anchor: Anchor = Anchor.CURRENT,

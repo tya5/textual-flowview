@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.1] - 2026-08-14
+
+### Fixed
+
+- **CI had been red since 0.18.x** — unrelated to any of those releases. `ruff`
+  was declared `>=0.5`, so CI installed whatever was newest while local runs
+  used an older one; ruff 0.16 added `RUF036`, which fires on a pre-existing
+  `clipboard` type union (`None` not last). Reordered the union (semantically
+  identical) and pinned `ruff==0.16.3` so lint results are reproducible instead
+  of drifting with each ruff release — which is what the rule-list comment in
+  `pyproject.toml` already claimed.
+
+
 ## [0.21.0] - 2026-08-14
 
 Nested groups with folding (#13). FlowView now owns the tree.

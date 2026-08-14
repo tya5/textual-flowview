@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "textual-flowview"
-version = "0.21.0"
+version = "0.21.1"
 description = "The virtualized feed widget for AI-agent, chat, and log TUIs in Textual."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -29,7 +29,7 @@ classifiers = [
 dependencies = ["textual>=0.80"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-asyncio>=0.23", "textual-dev>=1.5", "mypy>=1.8", "ruff>=0.5"]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "textual-dev>=1.5", "mypy>=1.8", "ruff==0.16.3"]
 
 [project.urls]
 Homepage = "https://github.com/tya5/textual-flowview"
