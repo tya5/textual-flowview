@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-08-14
+
+### Added
+
+- **`FlowModel.set_hidden_many(entries, hidden)`** — show or hide a run of
+  entries as **one** operation, the batch primitive behind group collapse
+  (#13). Hiding one entry at a time reflows per entry *and* re-runs the present
+  band each time, so as the layout closes up the entries sliding into the band
+  get presented — a group collapse therefore renders the very content it is
+  collapsing. Measured, collapsing 200 of 2 000 entries with the group at the
+  viewport: **573 ms and 104 `present()` calls** one-by-one against **35 ms and
+  8** batched; off-screen, 201 ms against 43 ms with no presents either way.
+  `Entry.hide()` / `show()` / `set_hidden()` are unchanged — this adds a path,
+  it doesn't replace one.
+
+  `examples/groups.py` and the README now collapse via `set_hidden_many`, and
+  the example's collapse-all does every group in a single batch.
+
+  Verified while implementing: a bulk visibility change **preserves the scroll
+  anchor** (the entry under the top edge stays there and the offset follows it).
+
+### Fixed
+
+- `examples/groups.py` bound `c` to collapse/expand-all, which FlowView itself
+  has taken for the cursor toggle since 0.14.0 — the example's key silently did
+  nothing. Rebound to `a`.
+- Corrected overstated figures published earlier in #13 — the wasted-`present()`
+  effect is real but requires the collapsing group to overlap the band, and the
+  speedup is 4.7×–16×, not 125×.
+
+
 ## [0.19.1] - 2026-08-13
 
 ### Documentation

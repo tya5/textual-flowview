@@ -1,12 +1,15 @@
 """textual-flowview group-collapse demo — a collapsible CI pipeline.
 
 Group collapse is built on the library's entry-visibility primitive: a header
-hides/shows its child entries with `child.hide()` / `child.show()`. Hidden
-entries keep their cached presentation, so collapsing/expanding is instant and
-never re-presents a body.
+hides/shows its child entries with `model.set_hidden_many(children, True)`.
+Hidden entries keep their cached presentation, so collapsing/expanding is
+instant and never re-presents a body — and doing the whole group in one call
+means one reflow, where hiding them one at a time would reflow per child and
+present the entries sliding through the view as the layout closes up.
 
 Run:  PYTHONPATH=src python examples/groups.py
-Keys: q quit · c collapse/expand all · click a header to toggle its group
+Keys: q quit · a collapse/expand all · click a header to toggle its group
+      (`c` is FlowView's own cursor toggle, so the app binds `a` instead)
 """
 
 from __future__ import annotations
@@ -110,7 +113,7 @@ class GroupsApp(App):
     """
     BINDINGS = [
         ("q", "quit", "Quit"),
-        ("c", "toggle_all", "Collapse / expand all"),
+        ("a", "toggle_all", "Collapse / expand all"),
     ]
 
     def __init__(self) -> None:
@@ -149,10 +152,15 @@ class GroupsApp(App):
 
     def action_toggle_all(self) -> None:
         self._all_collapsed = not self._all_collapsed
+        # every group in a single batch — one reflow for the whole screen
+        batch: list[Entry[Node]] = []
         for header_id, kids in self._children.items():
             header = self._header_by_id(header_id)
             if header is not None:
-                self._set_group(header, kids, self._all_collapsed)
+                header.item.collapsed = self._all_collapsed
+                header.update()  # redraw chevron
+                batch.extend(kids)
+        self.pipeline.set_hidden_many(batch, self._all_collapsed)
 
     def on_flow_view_selected(self, event: FlowView.Selected) -> None:
         entry = event.entry
@@ -167,8 +175,8 @@ class GroupsApp(App):
     ) -> None:
         header.item.collapsed = collapsed
         header.update()  # redraw chevron
-        for child in kids:
-            child.set_hidden(collapsed)  # the group-collapse primitive
+        # the group-collapse primitive: the whole group as one operation
+        self.pipeline.set_hidden_many(kids, collapsed)
 
     def _header_by_id(self, header_id: int) -> Entry[Node] | None:
         for entry in self.pipeline:

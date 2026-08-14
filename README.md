@@ -210,6 +210,8 @@ entry.hidden          # bool
 entry.hide()          # exclude from the view
 entry.show()          # re-include
 entry.set_hidden(True)
+
+model.set_hidden_many(entries, True)   # a whole group as ONE operation
 ```
 
 A collapsible header is then just hiding a run of child entries — see
@@ -218,10 +220,16 @@ A collapsible header is then just hiding a run of child entries — see
 ```python
 def collapse_group(header, children):
     header.item.collapsed = True
-    header.update()                 # redraw the ▸ chevron
-    for child in children:
-        child.hide()                # the group-collapse primitive
+    header.update()                        # redraw the ▸ chevron
+    model.set_hidden_many(children, True)  # the group-collapse primitive
 ```
+
+**Collapse a group with `set_hidden_many`, not a loop of `hide()`.** Each single
+change reflows *and* re-runs the present band, so as the layout closes up the
+entries sliding into the band get presented — including the ones you are hiding.
+Collapsing a 200-entry group you are *looking at* costs 573 ms and **104
+`present()` calls** one at a time, against 35 ms and 8 batched; for a group
+off-screen, 201 ms against 43 ms with no presents either way.
 
 Which entries belong to a group is up to you — grouping policy varies by app,
 so the library ships the visibility primitive rather than a fixed hierarchy.

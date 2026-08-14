@@ -189,3 +189,109 @@ async def test_group_collapse_hides_a_run() -> None:
             child.show()
         await pilot.pause()
         assert len(view._viewport.entries) == 6
+
+
+# -- Batched visibility (group collapse) -----------------------------------
+
+
+def test_set_hidden_many_skips_dead_and_unchanged() -> None:
+    m: FlowModel[Row] = FlowModel()
+    seen: list[list[int]] = []
+
+    class Spy:
+        def on_flow_visibility_many(self, entries) -> None:
+            seen.append([e.id for e in entries])
+
+        def __getattr__(self, _name):  # every other listener hook is a no-op
+            return lambda *a, **k: None
+
+    rows = [m.append(Row(str(i))) for i in range(4)]
+    m._attach(Spy())
+    rows[0].hide()          # already hidden -> excluded from the batch
+    rows[3].remove()        # dead -> excluded
+
+    m.set_hidden_many(rows, True)
+    assert seen == [[rows[1].id, rows[2].id]]
+    assert [r.hidden for r in rows[:3]] == [True, True, True]
+
+    m.set_hidden_many(rows, True)   # nothing changes -> no notification at all
+    assert len(seen) == 1
+
+
+@pytest.mark.asyncio
+async def test_collapse_batch_presents_nothing_and_reflows_once() -> None:
+    m: FlowModel[Row] = FlowModel()
+    presenter = RowPresenter()
+    rows = [m.append(Row(f"r{i}")) for i in range(300)]
+
+    async with _app(m, presenter).run_test(size=(40, 20)) as pilot:
+        view = pilot.app.query_one(FlowView)
+        await pilot.pause()
+        baseline = presenter.calls
+        reflows = 0
+        original = view._refresh_layout
+
+        def counting(state):
+            nonlocal reflows
+            reflows += 1
+            return original(state)
+
+        view._refresh_layout = counting  # type: ignore[method-assign]
+
+        # collapse a group of 200 that starts *below* the viewport: as the
+        # layout closes up, one-at-a-time hiding would slide them through the
+        # band and present them on their way out.
+        m.set_hidden_many(rows[50:250], True)
+        await pilot.pause()
+
+        assert presenter.calls == baseline, "hiding must not present the hidden"
+        assert reflows == 1
+        assert len(view._viewport.entries) == 100
+
+
+@pytest.mark.asyncio
+async def test_collapse_holds_the_scroll_anchor() -> None:
+    m: FlowModel[Row] = FlowModel()
+    rows = [m.append(Row(f"r{i}")) for i in range(300)]
+
+    async with _app(m, RowPresenter()).run_test(size=(40, 20)) as pilot:
+        view = pilot.app.query_one(FlowView)
+        await pilot.pause()
+        view.scroll_to_entry(rows[280], animate=False)
+        await pilot.pause()
+        vp = view._viewport
+        top = vp.entries[vp.locate(view.scroll_y)[0]]
+
+        # collapse a group entirely above the viewport
+        m.set_hidden_many(rows[10:210], True)
+        await pilot.pause()
+
+        # the entry under the top edge is unchanged; the scroll offset moved
+        # to follow it rather than staying put and jumping content
+        assert vp.entries[vp.locate(view.scroll_y)[0]] is top
+        assert view.scroll_y == vp.offset_of(top)
+
+
+@pytest.mark.asyncio
+async def test_collapse_clears_a_cursor_that_it_hides() -> None:
+    m: FlowModel[Row] = FlowModel()
+    rows = [m.append(Row(f"r{i}")) for i in range(20)]
+
+    class CursorApp(App):
+        def compose(self) -> ComposeResult:
+            yield FlowView(
+                model=m, presenter=RowPresenter(), spacing=0, selectable=True
+            )
+
+    async with CursorApp().run_test(size=(40, 20)) as pilot:
+        view = pilot.app.query_one(FlowView)
+        await pilot.pause()
+        view.set_current(rows[5])
+        m.set_hidden_many(rows[3:8], True)
+        await pilot.pause()
+        assert view.current is None
+
+        view.set_current(rows[1])
+        m.set_hidden_many(rows[10:14], True)   # cursor untouched by this batch
+        await pilot.pause()
+        assert view.current is rows[1]

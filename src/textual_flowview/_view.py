@@ -665,6 +665,20 @@ class FlowView(ScrollView, Generic[T]):
         self._refresh_layout(state)
         self._reanchor_cursor()
 
+    def on_flow_visibility_many(self, entries: list[Entry[T]]) -> None:
+        # A batch of entries changed visibility (a group collapsed/expanded).
+        # One reflow and one present pass for the whole batch — doing it per
+        # entry reflows N times and, worse, re-runs the present band each time,
+        # so entries sliding into the band while the layout closes up get
+        # presented on their way out of view.
+        if any(e.hidden and self._current is e for e in entries):
+            self.set_current(None)
+        state = self._capture()
+        self._viewport.set_entries(self._visible_entries())
+        self._refresh_layout(state)
+        self._present_visible()
+        self._reanchor_cursor()
+
     def on_flow_visibility(self, entry: Entry[T]) -> None:
         # Which entries are visible changed (a group collapsed/expanded). Rebuild
         # the viewport's entry list and reflow — but keep every cached
